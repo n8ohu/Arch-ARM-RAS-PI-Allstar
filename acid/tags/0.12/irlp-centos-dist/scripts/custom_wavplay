@@ -1,0 +1,22 @@
+#!/bin/bash
+#=======================================================================
+# filename:	custom_wavplay
+# description:	used to play .wav files
+# NOTE:		This is a strnge file and as far as I know, is not used
+#		in the modern IRLP system. It should be superceded by
+#		the "playwav" script.
+#=======================================================================
+[ -z "$SCRIPT" ] && SCRIPT=/home/irlp/scripts
+source ${SCRIPT}/common-functions.sh
+
+if [ "$#" = "0" ] ; then exit 1; fi
+
+while [ -n "$1" ] ; do
+  WAVFILES="${WAVFILES} ${AUDIO}/${1}.wav"
+  shift
+done
+
+# Not useful in chan_irlp because it play directly to the soundcard
+${BIN}/play ${WAVFILES} &>/dev/null
+
+exit 0

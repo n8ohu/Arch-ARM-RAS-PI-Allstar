@@ -1,0 +1,378 @@
+#!/bin/bash
+#=======================================================================
+# filename:	troubleshoot-irlp
+# description:	This script is used to troubleshoot the IRLP node
+#		installation.
+# history:
+# 20081110	kc6hur	Adapted the script to run on a Limey-Linux
+#			asterisk app_rpt chan_irlp installation
+#=======================================================================
+#This script must be run as repeater, and must source the environment file
+
+[ -z "$SCRIPT" ] && SCRIPT=/home/irlp/scripts
+source $SCRIPT/common-functions.sh
+
+# This script can not be run if the node is connected to anywhere. We will also
+# disable the node before we start, and return it to its pre-run condition 
+
+# If node is active ...
+if [ -f $LOCAL/active ] ; then
+  echo "----------WARNING-----------"
+  echo "Node is currently connected to another node or reflector. Please disconnect"
+  echo "and run the script again once the node is idle."
+  exit 1
+fi
+
+# If node is enabled...
+if [ -f $LOCAL/enable ] ; then
+  echo "The node is enabled. This script is disabling the node for the duration of"
+  echo "the test. The node will be re-enabled once the script is completed." 
+  REENABLE="YES"
+  rm -f $LOCAL/enable
+  echo -n "To cancel now, press CTRL-C. To start the test, press ENTER : " ; read
+fi
+
+clear
+echo "This script is designed to go through your node setup, and determine if there"
+echo "is any obvious problems with your setup. This will help you troubleshoot"
+echo "problems on your own and will get your node up and running quickly."
+echo
+echo "It will perform the following tests:"
+echo "- DNS Server Test"
+echo "- Port Forwarding Test (checks TCP and UDP ports in and out)"
+echo "- Hostname Resolution Test"
+echo "- Valid PGP Key Test"
+echo "- Correct Date Test"
+echo "- Environment File Corruption Test"
+echo "- /tmp Directory Writable Test"
+echo "- custom_decode File Corruption Test"
+echo
+echo "A small report will be created at the end of each test which will identify"
+echo "problems in your setup. Be sure to write down anything that is wrong, as the"
+echo "screen is cleared after each test after it is completed."
+echo
+echo "Compare any errors you get with the troubleshooting document located at:"
+echo "http://www.irlp.net/ts.html"
+echo 
+echo -n "To cancel now, press CTRL-C. To start the test, press ENTER : " ; read
+
+clear
+echo "*******************"
+echo "* DNS Server Test *"
+echo "*******************"
+echo
+
+# Tests the operational characteristics of the DNS system
+
+echo "------------------------------------------------------------------------------"
+if (nslookup irlp.net | grep Address >/dev/null 2>&1) && \
+  (nslookup microsoft.com | grep Address >/dev/null 2>&1); then
+  echo TEST No. 1 REPORT - PASS - DNS is working correctly
+else
+  echo TEST No. 1 REPORT - ERROR - DNS is not setup correctly 
+fi
+echo "------------------------------------------------------------------------------"
+echo
+echo -n "Press ENTER to continue : " ; read
+
+clear
+echo "************************"
+echo "* Port Forwarding Test *"
+echo "************************"
+echo
+
+echo Performing INBOUND Port Forwarding Test
+echo -n "Starting listening services on UDP ports .... "
+$NETCAT -l -u -p2074 -w60 >&/dev/null 2>&1 &
+$NETCAT -l -u -p2075 -w60 >&/dev/null 2>&1 &
+$NETCAT -l -u -p2076 -w60 >&/dev/null 2>&1 &
+$NETCAT -l -u -p2077 -w60 >&/dev/null 2>&1 &
+$NETCAT -l -u -p2078 -w60 >&/dev/null 2>&1 &
+$NETCAT -l -u -p2079 -w60 >&/dev/null 2>&1 &
+$NETCAT -l -u -p2080 -w60 >&/dev/null 2>&1 &
+$NETCAT -l -u -p2081 -w60 >&/dev/null 2>&1 &
+$NETCAT -l -u -p2082 -w60 >&/dev/null 2>&1 &
+$NETCAT -l -u -p2083 -w60 >&/dev/null 2>&1 &
+$NETCAT -l -u -p2084 -w60 >&/dev/null 2>&1 &
+$NETCAT -l -u -p2085 -w60 >&/dev/null 2>&1 &
+$NETCAT -l -u -p2086 -w60 >&/dev/null 2>&1 &
+$NETCAT -l -u -p2087 -w60 >&/dev/null 2>&1 &
+$NETCAT -l -u -p2088 -w60 >&/dev/null 2>&1 &
+$NETCAT -l -u -p2089 -w60 >&/dev/null 2>&1 &
+$NETCAT -l -u -p2090 -w60 >&/dev/null 2>&1 &
+$NETCAT -l -u -p2091 -w60 >&/dev/null 2>&1 &
+$NETCAT -l -u -p2092 -w60 >&/dev/null 2>&1 &
+$NETCAT -l -u -p2093 -w60 >&/dev/null 2>&1 &
+echo "done."
+
+$NETCAT irlp.net 20000
+
+killall nc >/dev/null 2>&1
+
+echo Performing OUTBOUND Port Test
+# Tests TCP ports: 873, 8873, 10000, 15425-15428
+# Tests UDP ports: 2074-2093
+
+SERVERIP=206.246.140.250
+
+TCPSTART=15425
+TCPSTOP=15427
+UDPSTART=2074
+UDPSTOP=2093
+
+echo -n Testing OUTBOUND TCP and UDP ports .
+
+if ! ($NETCAT -n -z -w5 $SERVERIP 873) ; then
+  NORSYNC873=TRUE
+  BAD_REPORT2="$BAD_REPORT2 873 "
+fi
+echo -n "."
+
+if ! ($NETCAT -n -z -w5 $SERVERIP 8873) ; then
+  NORSYNC8873=TRUE
+  BAD_REPORT2="$BAD_REPORT2 8873 "
+fi
+echo -n "."
+
+if ! ($NETCAT -n -z -w5 $SERVERIP 10000) ; then
+  BAD_REPORT2="$BAD_REPORT2 10000 "
+fi
+echo -n "."
+
+until [ $TCPSTART -gt $TCPSTOP ] ; do
+  if ! ( $NETCAT -n -z $SERVERIP $TCPSTART) ; then
+    BAD_REPORT2="$BAD_REPORT2 $TCPSTART "
+  fi
+  let TCPSTART+=1
+  echo -n "."
+done
+
+until [ $UDPSTART -gt $UDPSTOP ] ; do
+  if ! ($NETCAT -u -n -z -w2 $SERVERIP $UDPSTART) ; then
+    BAD_REPORT2="$BAD_REPORT2 $UDPSTART "
+  fi
+  let UDPSTART+=1
+  echo -n "."
+done
+
+echo " done."
+
+echo
+echo "------------------------------------------------------------------------------"
+if [ -z "$BAD_REPORT2" ] ; then
+  echo TEST No. 3 REPORT - PASS - All the ports are working OUTBOUND correctly
+else
+  echo TEST No. 3 REPORT - ERROR - The following ports do NOT work OUTBOUND:
+  echo $BAD_REPORT2
+fi
+echo "------------------------------------------------------------------------------"
+echo
+if [ "$NORSYNC873" = "TRUE" -a \
+     "$NORSYNC8873" != "TRUE" -a \
+     "$RSYNC8873" != "YES" ] ; then
+  echo "ERROR - Your node can not send outgoing data on port 873, but can on 8873."
+  echo "Please consult the troubleshooting information on how to set your node to"
+  echo "use port 8873."
+fi
+
+echo -n "Press ENTER to continue : " ; read
+
+clear
+echo "*****************************"
+echo "* Host Name Resolution Test *"
+echo "*****************************"
+echo
+
+HOSTNAME=`hostname`
+echo "Your node's hostname is set to \"$HOSTNAME\""
+echo -n "Testing if your hostname resolves... "
+
+#ping -c1 -W2 $HOSTNAME &>/dev/null
+# The ping below works on Limey-Linux (BusyBox)
+ping -c 1 $HOSTNAME &>/dev/null
+RESULT="$?"
+
+echo "done."
+echo
+echo "------------------------------------------------------------------------------"
+if   [ "$RESULT" = "2" ] ; then
+  echo "TEST No. 4 REPORT - ERROR - Your node's hostname DOES NOT resolve!"
+  echo "Please consult the troubleshooting information on how to fix this problem."
+elif [ "$RESULT" = "1" ] ; then
+  echo "TEST No. 4 REPORT - WARNING - Your node's hostname resolves, but the test"
+  echo "is unable to ping your address. This is not a fatal error, but please"
+  echo "consult the troubleshooting information on how to fix this problem."
+elif [ "$RESULT" = "0" ] ; then
+  echo "TEST No. 4 REPORT - PASS - Your host name resolves OK."
+fi
+
+echo "------------------------------------------------------------------------------"
+echo
+echo -n "Press ENTER to continue : " ; read
+
+
+clear
+echo "****************"
+echo "* PGP Key Test *"
+echo "****************"
+echo
+echo -n "Updating pgp keyring... "
+$SCRIPT/update keyring >/dev/null 2>&1
+echo "done."
+
+echo "------------------------------------------------------------------------------"
+
+if ($BIN/pgp -kv $STATIONID 2>/dev/null | grep 512 | grep $STATIONID >/dev/null 2>&1 ) ; then
+  echo "TEST No. 5 REPORT - PASS - Your Public PGP key exists in the keyring."
+else
+  echo "TEST No. 5 REPORT - ERROR - Your public PGP key does not exist in the keyring."
+fi
+
+echo "------------------------------------------------------------------------------"
+
+PGPCOUNT=`$BIN/pgp -kv $HOME/.pgp/secring.pgp 2>/dev/null | grep 512 |wc -l | cut -d" " -f7`
+
+echo
+echo "------------------------------------------------------------------------------"
+
+if [ "$PGPCOUNT" = "0" ] ; then
+  echo "TEST No. 6 REPORT - ERROR - Your do not have a secret PGP key in the secret"
+  echo "                    keyring. Please check the troubleshooting documents on"
+  echo "		    how to solve this problem." 
+fi
+
+if [ "$PGPCOUNT" = "1" ] ; then
+  echo "TEST No. 6 REPORT - PASS - Your secret keyring only contains one secret "
+  echo "                           PGP key."
+fi
+
+if [ "$PGPCOUNT" -gt "1" ] ; then
+  echo "TEST No. 6 REPORT - ERROR - Your secret keyring contains more than one"
+  echo "                            secret PGP key. Please check the troubleshooting"
+  echo "                            Please check the trodocuments on how to solve"
+  echo "		            this problem." 
+fi
+
+echo "------------------------------------------------------------------------------"
+
+PGPID=`$BIN/pgp -kv $HOME/.pgp/secring.pgp 2>/dev/null | grep 512 | cut -d" " -f6`
+
+echo
+echo "------------------------------------------------------------------------------"
+
+if [ "$STATIONID" = "$PGPID" ] ; then
+  echo "TEST No. 7 REPORT - PASS - Your Secret PGP key matches your node's stationID."
+else
+  echo "TEST No. 7 REPORT - ERROR - Your PGP key does NOT match your stationid in the "
+  echo "                      environment file. Please check the troubleshooting "
+  echo "		      documents on how to solve this problem." 
+fi
+
+echo "------------------------------------------------------------------------------"
+echo
+echo "------------------------------------------------------------------------------"
+echo "TEST No. 8 REPORT - PASS - Test is no longer required."
+echo "------------------------------------------------------------------------------"
+echo
+echo -n "Press ENTER to continue : " ; read
+
+#
+# NOTE: This test has been specifically configured for the versions of date and rdate
+#       found in the Limey-Linux distribution.
+#
+NODETIME="`date | cut -d" " -f1-4`"
+SRVRTIME="`rdate -p 137.82.1.3 | cut -d" " -f1-4`"
+NODESEC="`date -d "$NODETIME" +%s`"
+SRVRSEC="`date -d "$SRVRTIME" +%s`"
+clear
+echo "*********************"
+echo "* Correct Date Test *"
+echo "*********************"
+echo
+echo "The current lcl system time is: ${NODETIME}"
+echo
+echo "The current rmt server time is: ${SRVRTIME}"
+echo
+echo "The time difference is: $((NODESEC-SRVRSEC)) seconds"
+echo
+PGPDATE=`$BIN/pgp -kv $HOME/.pgp/secring.pgp 2>/dev/null | grep 512 | cut -d" " -f5`
+echo "The node's PGP key generation date is: $PGPDATE"
+
+echo
+echo "------------------------------------------------------------------------------"
+
+echo "TEST No. 9 Report - If the date is drastically different, you should consider"
+echo "looking at how to set the date on your machine. If the system date is BEFORE"
+echo "the PGP key date, the system will not operate correctly. Please check the"
+echo "troubleshooting documents on how to solve these problems."
+
+echo "------------------------------------------------------------------------------"
+echo
+echo -n "Press ENTER to continue : " ; read
+
+clear
+echo "************************************"
+echo "* Environment File Corruption Test *"
+echo "************************************"
+LINES=`cat $CUSTOM/environment | grep -v "#" | grep -v "export" | grep -v "echo_environment" | uniq | wc -l | cut -d" " -f7`
+echo
+echo "------------------------------------------------------------------------------"
+if [ "$LINES" -gt "1" ] ; then
+  echo "TEST No. 10 Report - ERROR - There is corruption in the environment file. The"
+  echo "problem exists at or near the following line(s):"
+  echo
+  cat $CUSTOM/environment | grep -v "#" | grep -v "export" | uniq
+  echo
+  echo "Please check the troubleshooting documents on how to solve this problem."
+else
+  echo "TEST No. 10 Report - PASS - The environment file parses correctly."
+fi
+echo "------------------------------------------------------------------------------"
+echo
+echo -n "Press ENTER to continue : " ; read
+
+
+clear
+echo "********************************"
+echo "* /tmp Directory Writable Test *"
+echo "********************************"
+echo
+echo "------------------------------------------------------------------------------"
+if [ -w /tmp ] ; then
+  echo "TEST No. 11 Report - PASS - The /tmp directory is writable."
+else
+  echo "TEST No. 11 Report - ERROR - The /tmp directory is NOT writable. Please"
+  echo "                       check the troubleshooting documents on how to solve"
+  echo "                       this problem."
+fi
+echo "------------------------------------------------------------------------------"
+echo
+echo -n "Press ENTER to continue : " ; read
+
+
+clear
+echo "**************************************"
+echo "* custom_decode File Corruption Test *"
+echo "**************************************"
+echo
+echo "------------------------------------------------------------------------------"
+$CUSTOM/custom_decode &>/dev/null
+if [ "$?" = "0" ] ; then 
+  echo "TEST No. 12 Report - PASS - The custom_decode file appears to be OK."
+else
+  echo "TEST No. 12 Report - ERROR - The custom_decode file contains some errors. Please"
+  echo "                       check the troubleshooting documents on how to solve"
+  echo "                       this problem."
+fi
+echo "------------------------------------------------------------------------------"
+echo
+
+if [ "$REENABLE" = "YES" ] ; then
+  echo
+  echo "The node is now re-enabled."
+  echo
+  touch $LOCAL/enable
+fi
+
+echo This concludes the test program.
+exit 0

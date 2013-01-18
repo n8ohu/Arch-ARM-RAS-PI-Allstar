@@ -1,0 +1,209 @@
+#!/bin/bash
+
+# This script will upload three audio files from a floppy disk to the server, 
+# after authenticating. This script checks the type of file, sampling rate, 
+# number of bits, before uploading. The server side will also check these 
+# values so that oversized files don't make it into the system
+
+. /home/irlp/custom/environment
+
+#Make sure we are user root!!!
+if [ `/usr/bin/whoami` != "root" ] ; then
+  echo This program must be run as user ROOT, as it accesses the floppy drive.
+  exit 1
+fi
+
+# Make sure we have sourced the environment file
+if [ "$RUN_ENV" != "TRUE" ] ; then
+  echo "You must source the environment file first. Do this by running:"
+  echo ". /home/irlp/custom/environment"
+  exit 1
+fi
+
+# Check to make sure sox is there and installed
+if [ ! -f /home/irlp/bin/sox ] ; then
+  echo "The universal sound sample translator SOX is not installed"
+  exit 1
+fi
+
+if [ ${#STATIONID} = "6" ] ; then
+  CONVERTED_STATIONID="$STATIONID"0
+else
+  CONVERTED_STATIONID="$STATIONID"
+fi
+
+# Since Fedora was started, netcat the simple TCP listener/sender
+# requires that the "nc" used is the one from the distro. We have to
+# export the proper netcat to use. We check if it is in the /usr/bin
+# and then set the environment.
+
+if [ -f /usr/bin/nc ] ; then
+  NETCAT=/usr/bin/nc
+elif [ -f /bin/nc ] ; then
+  NETCAT=/bin/nc
+else
+  NETCAT=$BIN/nc
+fi
+
+clear
+
+echo "This script will upload the 2 node audio files from"
+echo "a floppy disk to the server. You must have a floppy disk"
+echo "in the disk drive with the following files on it :"
+echo
+echo "$CONVERTED_STATIONID"on.wav
+echo "$CONVERTED_STATIONID"off.wav
+echo
+echo "You MUST have both files, even if only one is being updated!"
+echo "The file names MUST match the above, or they will not be updated!"
+echo
+echo "You can also copy these files to the /tmp folder on your node,"
+echo "if you do not have a floppy connected."
+echo
+echo -n "Press enter to continue, or CTRL-C to exit. : " ; read
+
+if [ -f /tmp/${CONVERTED_STATIONID}on.wav -a \
+     -f /tmp/${CONVERTED_STATIONID}off.wav ] ; then
+  echo Files found in /tmp, skipping copy from floppy.
+else
+  echo "Copying files from the floppy into the /tmp folder ..."
+
+  if [ ! -d /mnt/floppy ] ; then
+    mkdir /mnt/floppy
+  fi
+
+  mount -t vfat /dev/fd0 /mnt/floppy
+
+  if [ -f /mnt/floppy/${CONVERTED_STATIONID}on.wav   -a \
+       -f /mnt/floppy/${CONVERTED_STATIONID}off.wav ] ; then
+
+    echo -n "Copying ${CONVERTED_STATIONID}on.wav ... "
+    cp -f /mnt/floppy/${CONVERTED_STATIONID}on.wav /tmp/${CONVERTED_STATIONID}on.wav
+    echo done.
+
+    echo -n "Copying ${CONVERTED_STATIONID}off.wav ... "
+    cp -f /mnt/floppy/${CONVERTED_STATIONID}off.wav /tmp/${CONVERTED_STATIONID}off.wav
+    echo done.
+  else
+    echo "All of the files were not found on the floppy disk."
+    echo "Please check the contents of the disk, and try again."
+    exit 1
+  fi
+  
+  umount /dev/fd0
+
+fi
+
+# At this point we have the three files in /tmp
+# We will try to pull the info about the wave files so we can reject incorrect files.
+
+if [ ! -f /tmp/${CONVERTED_STATIONID}on.wav  -o \
+     ! -f /tmp/${CONVERTED_STATIONID}off.wav    ] ; then
+  echo "Both files were not found! Check the filenames, especially the case of the"
+  echo "letters, and run the script again."
+  exit 1
+fi
+
+cd /tmp
+for i in ${CONVERTED_STATIONID}?*.wav ; do
+  echo -n Testing $i ...
+  sox -V /tmp/$i -e 1>/tmp/wavetest 2>>/tmp/wavetest
+
+  FILE_TYPE="`cat /tmp/wavetest |grep 'Reading Wave file' |cut -d':' -f3 |cut -d',' -f1`"
+  FILE_TYPE=${FILE_TYPE#?}
+#  echo File Type=$FILE_TYPE
+
+  BITRATE="`cat /tmp/wavetest | grep 'using sample rate' | cut -d' ' -f7`"
+  BITRATE2="`cat /tmp/wavetest | grep 'using sample rate' | cut -d' ' -f8`"
+#  echo Bitrate=$BITRATE
+
+  CHANNELS="`cat /tmp/wavetest |grep 'Reading Wave file' |cut -d',' -f2 |cut -d' ' -f2`"
+#  echo Channels=$CHANNELS
+
+  BITS_PER_SAMPLE="`cat /tmp/wavetest |grep 'bits/samp' |cut -d',' -f3 |cut -d' ' -f2`"
+#  echo Bits per sample=$BITS_PER_SAMPLE
+
+  if [ "$FILE_TYPE" != "Microsoft PCM format" ] ; then
+    echo
+    echo "The file type is detected as $FILE_TYPE."
+    echo "The file type must be Microsoft PCM wav format! Exiting."
+    exit 1
+  fi
+
+  if [ "$BITRATE" != "8000" -a "$BITRATE2" != "8000" ] ; then
+    echo
+    echo "The file bitrate must be 8000 Hz. This file is $BITRATE Hz. Exiting."
+    exit 1
+  fi
+
+  if [ "$CHANNELS" != "1" ] ; then
+    echo
+    echo "This file has $CHANNELS channels. The file type must be mono.  Exiting."
+    exit 1
+  fi
+
+  if [ "$BITS_PER_SAMPLE" != "8" ] ; then
+    echo
+    echo "The file is $BITS_PER_SAMPLE bits. It must be 8 bits. Exiting."
+    exit 1
+  fi
+  echo " OK."
+done
+
+echo "Both files tested OK, sending them to the server now ... "
+echo
+echo "Sending ..."
+
+# Here we contact the server using the new irlp_wave_client system which
+# authemticates to the server, and tells the server to set up a temporary
+# system to upload the files. This window is open for 30 seconds.
+
+$BIN/irlp_wave_client >/dev/null 2>&1
+
+# We use ncftpput for this transfer. 
+# The files are placed in quarantine, and then transferred out once they have been 
+# confirmed to be of the correct format, and bitrate (etc).
+
+# Added May 24th, 2007
+# Added flag for embedded nodes, and make the transfer possible without ncftp
+
+cd /tmp
+
+tar -cvf /tmp/${CONVERTED_STATIONID}.tar ${CONVERTED_STATIONID}on.wav ${CONVERTED_STATIONID}off.wav
+gzip /tmp/${CONVERTED_STATIONID}.tar
+mv /tmp/${CONVERTED_STATIONID}.tar.gz /tmp/${CONVERTED_STATIONID}.tgz
+
+if [ "$IS_EMBEDDED" = "YES" ] ; then
+  echo "machine installs.irlp.net" > ~/.netrc
+  echo "login anonymous" >> ~/.netrc
+  echo "password guest@" >> ~/.netrc
+  ftp installs.irlp.net <<EOF
+    bin
+    cd pub/install/wavefiles/
+    put ${CONVERTED_STATIONID}.tgz
+    bye
+#NOTE that the eof has to be on a line without leading spaces
+EOF
+  rm ~/.netrc
+
+else 
+  /usr/bin/ncftpput installs.irlp.net /pub/install/wavefiles/ /tmp/${CONVERTED_STATIONID}.tgz
+fi
+
+if [ "$?" != "0" ] ; then
+  echo
+  echo "Connection failed. If this persists, contact installs@irlp.net."
+else
+  echo
+  echo "File transaction completed. Your new wave files will be available for other"
+  echo "nodes to download within two minutes."
+  echo
+  echo -n "Deleting the wave files from /tmp ... "
+  rm -f /tmp/${CONVERTED_STATIONID}on.wav
+  rm -f /tmp/${CONVERTED_STATIONID}off.wav
+  rm -f /tmp/${CONVERTED_STATIONID}.tgz
+  rm -f /tmp/authtemp*
+  rm -f /tmp/challenge*
+  rm -f /tmp/wavetest
+  echo "done."
+fi

@@ -1,0 +1,27 @@
+#!/bin/bash
+
+. /home/irlp/custom/environment
+
+if [ ! -p $FIFO ] ; then
+	rm -f $FIFO
+	mkfifo $FIFO
+fi
+
+# This performs a test of the new "reflector informs" when a node is
+# blocked, so the person doesnt stay connected forevermore.
+#--------------------------------------------------------------------------------
+# NOTE: This code is commented out until I can fully understand what it is doing.
+#       It has to do with being blocked by a reflector.
+#--------------------------------------------------------------------------------
+#if [ -f $LOCAL/active ] && [ -f $LOCAL/calledip ] ; then
+#  CALLING_IP=`$BIN/ipdet | cut -d "=" -f2`
+#  if (cat $LOCAL/active | grep ref >/dev/null 2>&1) && [ "$CALLING_IP" = `cat $LOCAL/calledip` ] ; then
+#    # Reflector is calling us back, we must have been blocked!
+#    echo "IP matched - Dropping node from reflector."
+#    $SCRIPT/end blocked
+#    exit 0
+#  fi
+#fi
+
+cd $RUN
+exec $BIN/irlp_answer

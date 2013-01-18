@@ -1,0 +1,551 @@
+#!/bin/bash
+
+#Sets the install directory (/home/irlp required)
+ID=/home/irlp
+
+# Determine the repository from the URL embedded in rc.local at initial load
+
+if [ -z "$1" ]
+then
+	if [ -e /etc/rc.d/acidrepo ]
+	then
+	        REPO=$(cat /etc/rc.d/acidrepo)
+	else
+		echo "Cannot determine where to download irlp support files from!"
+		echo "Try running it as:"
+		echo " $0 base-URL-where-you-downloaded-this-script "
+		echo " for example: $0 http://dl.allstarlink.org "
+		exit 1
+	fi
+else
+	REPO=$1
+fi
+
+#Sets the IP of the download server
+SERVERIP=208.67.255.162
+TARSERVER=$REPO
+TARPATH=installcd
+ENVFILE=$ID/custom/environment
+
+DATE=`date`
+
+clear
+
+echo "This script either does a NEW install or a REINSTALL of IRLP"
+echo "for Asterisk/App_Rpt."
+echo
+echo "If you currently DO NOT have an assigned node number, please use"
+echo "the NEW install option. If you already have a node number and it"
+echo "was running on a different machine, or are re-installing it onto"
+echo "the same machine, then you MUST have the irlp_backup.tgz (which"
+echo "was obtained by running the scripts/backup_for_reinstall script"
+echo "and copying the file from the backup directory) from the previous"
+echo "setup, and you MUST use the REINSTALL option."
+echo
+echo "Please type REINSTALL or NEW and press ENTER : " ; read NEW
+echo
+
+if [ "$NEW" != "NEW" -a "$NEW" != "REINSTALL" ] ; then 
+  echo "Please determine what you really want to do and then re-run this script."
+  exit 1
+fi
+
+clear
+
+ROUTEDEVICE=`netstat -rn | awk ' $1 == "0.0.0.0" { print $8; } '`
+
+#THIS CHECKS TO MAKE SURE WGET IS INSTALLED
+if ! (wget --version > /dev/null 2>&1) ; then 
+  echo "The script has detected that the web browser wget is not installed."
+  echo
+  echo "This is required for the irlp-centos-install to continue. Make sure you"
+  echo "installed all of the packages that are required in the install."
+  echo
+  echo
+  echo "If you are still having trouble, please email installs@irlp.net."
+  echo
+  echo -n "Press ENTER to exit."; read
+  exit 1
+else
+  echo "Web Browser WGET detected OK."
+fi
+
+#THIS CHECKS TO MAKE SURE SED IS INSTALLED
+if ! (sed --version > /dev/null 2>&1) ; then 
+  echo "The script has detected that the string editor SED is not installed."
+  echo
+  echo "This is required for the irlp-centos-install to continue. Make sure you"
+  echo "installed all of the packages that are required in the install."
+  echo
+  echo
+  echo "If you are still having trouble, please email installs@irlp.net."
+  echo
+  echo -n "Press ENTER to exit."; read
+  exit 1
+else
+  echo "String Editor SED detected OK."
+fi
+
+#THIS CHECKS TO MAKE SURE AWK IS INSTALLED
+if ! (awk --version > /dev/null 2>&1) ; then 
+  echo "The script has detected that the string language AWK is not installed."
+  echo
+  echo "This is required for the irlp-centos-install to continue. Make sure you"
+  echo "installed all of the packages that are required in the install."
+  echo
+  echo
+  echo "If you are still having trouble, please email installs@irlp.net."
+  echo
+  echo -n "Press ENTER to exit."; read
+  exit 1
+else
+  echo "String Language AWK detected OK."
+fi
+
+#THIS CHECKS TO MAKE SURE SOX IS INSTALLED
+if [ ! -x /usr/bin/sox ]
+then
+  echo "The script has detected that the audio program sox is not installed."
+  echo
+  echo "This is required for the irlp-centos-install to continue. Make sure you"
+  echo "installed all of the packages that are required in the install."
+  echo
+  echo
+  echo "If you are still having trouble, please email installs@irlp.net."
+  echo
+  echo -n "Press ENTER to exit."; read
+  exit 1
+else
+  echo "Audio Program SOX detected OK."
+fi
+
+# This cleans up the ugly BASHRC problem where root does not have
+# a usable prompt.
+
+if [ ! -f /root/.bash_profile ] ; then
+  ln -s /etc/bashrc /root/.bash_profile
+fi
+
+
+#THIS CHECKS TO MAKE SURE YOUR HOSTNAME RESOLVES, and ADDS A 
+#SIMPLE LINE TO THE HOSTS FILE IF NOT
+
+CONTINUE="NO"
+while [ "$CONTINUE" = "NO" ] ; do
+  if ! (ping -c 1 `hostname` > /dev/null 2>&1) ; then
+    echo "The script has detected that your hostname = " `hostname` " does not resolve."
+    echo 
+    echo "This is required for the irlp-centos-install to continue. "
+    echo 
+    echo -n "Would you like the script to try to add a line to the hosts file to help? : (Y/n)" ; read YESNO
+
+    if [ "$YESNO" = "y" ] || [ "$YESNO" = "Y" ] || [ "$YESNO" = "" ] ; then
+      echo 
+      echo "Adding line : 127.0.0.1 " `hostname` " to /etc/hosts"
+      echo "127.0.0.1 localhost.localdomain localhost "`hostname` >> /etc/hosts
+    else
+      echo
+      echo "This line is required for IRLP to work."
+      echo "If you are still having troubles please email installs@irlp.net"
+      echo
+      echo -n "Press ENTER to exit."; read
+      exit 1    
+    fi
+  else
+    CONTINUE="YES"
+    echo "Hostname resolves OK."
+    echo
+    echo
+  fi
+done
+
+echo -n "Press ENTER to continue : "; read
+
+#Here is where we determine the node owners name and callsign. This info will be included with
+#the pgp key file emailed to the IRLP server. This is how we can determine if the keyfile is
+#legitimite.
+
+if [ "$NEW" = "NEW" ]
+then
+
+  CONTINUE="NO"
+  while [ "$CONTINUE" = "NO" ] ; do
+
+    echo "We must gather some information about you so we can confirm your original order"
+    echo "information. This information is vital to the security of the system."
+    echo "Submissions sent with incorrect information will be ignored."
+    echo 
+    echo "Please enter all the information you can. It will greatly speed up the process"
+    echo "of IRLP being able to confirm your security key."
+    echo
+    echo  _______________________________________________________________________________
+
+    echo "Enter your node CALLSIGN (all lowercase)." 
+    echo -n "Node Callsign : " ; read CALL
+    if [ ${#CALL} -lt 3 ] ; then
+      echo "ERROR : That callsign is less than 4 characters"
+      echo -n "Press Enter to start entering info again." ; read
+      CONTINUE="NO"
+      clear
+      continue
+    fi
+    echo
+    echo "Enter the CALLSIGN of the person who ordered the node number (all lowercase)."
+    echo "If someone else ordered the node number for you, make sure you use THEIR callsign"
+    echo -n "Order Callsign : " ; read PERSONAL_CALL
+    if [ ${#PERSONAL_CALL} -lt 3 ] ; then
+      echo "ERROR : That callsign is less than 4 characters"
+      echo -n "Press Enter to start entering info again." ; read
+      CONTINUE="NO"
+      clear
+      continue
+    fi
+    echo
+    echo "Enter the name which appeared on the IRLP order. If someone else ordered"
+    echo "the node number for you, make sure you enter THEIR name, and NOT yours." 
+    echo -n "Order Name : " ; read FULL_NAME
+    echo
+    echo "Enter the approximate date the node number was ordered.  (Example - March, 2002)"
+  echo -n "Order Date : " ; read ORDER_DATE
+    echo
+    echo "Enter the email address for correspondance about this install."
+    echo -n "Email Address : " ; read EMAIL_ADDR
+    echo
+    echo "Enter the ALLSTAR NODE number that the IRLP node is associated with"
+    echo -n "ALLSTAR NODE number : " ; read ALLSTAR_NODE
+    if [ ${#ALLSTAR_NODE} -lt 4 ] ; then
+      echo "ERROR : That node number is less than 4 characters"
+      echo -n "Press Enter to start entering info again." ; read
+      CONTINUE="NO"
+      clear
+      continue
+    fi
+    echo
+    echo "Here is the data you entered."
+    echo "*******************************************************************************"
+    echo "Node Callsign = $CALL"
+    echo "Callsign on Order = $PERSONAL_CALL"
+    echo "Full Name on Order = $FULL_NAME"
+    echo "Approx Date of Order = $ORDER_DATE"
+    echo "Email Address = $EMAIL_ADDR"
+    echo "ALLSTAR node number = $ALLSTAR_NODE"
+    echo "*******************************************************************************"
+    echo
+    echo -n "Are you SURE this data is all correct? (Y/n) : " ; read YESNO
+    if [ "$YESNO" = "y" ] || [ "$YESNO" = "Y" ] || [ "$YESNO" = "" ] ; then
+      CONTINUE="YES"
+    else
+      echo
+      CONTINUE="NO"
+      clear
+    fi 
+  done
+
+# System to find a node number automatically - Queries the server for a random node 
+# number, based on the first digit. The lock is only available for 24 hours. 
+
+  telnet "$SERVERIP" 12000 2>/dev/null | grep "-" 
+  STATION=`telnet "$SERVERIP" 12001 2>/dev/null | grep stn`
+else
+    CONTINUE="YES"
+    while [ "$CONTINUE" = "YES" ]
+    do
+      echo
+      echo "Enter the ALLSTAR NODE number that the IRLP node is associated with"
+      echo -n "ALLSTAR NODE number : " ; read ALLSTAR_NODE
+      if [ ${#ALLSTAR_NODE} -lt 4 ] ; then
+        echo "ERROR : That node number is less than 4 characters"
+      else
+	CONTINUE="NO"
+      fi
+    done
+    echo
+    echo "Enter the full pathname of the file generated by backup_for_reinstall."
+    echo -n "Backup file name (/tmp/irlp_backup.tgz) :" ; read BACKUP_FILE
+    if [ ${#BACKUP_FILE} -lt 1 ] ; then
+	BACKUP_FILE=/tmp/irlp_backup.tgz
+    fi
+
+    mkdir -p /tmp/irlp-backup
+    echo "Reading from backup file $BACKUP_FILE ..."
+    cd /tmp/irlp-backup
+    tar xzf $BACKUP_FILE
+    if [ $? -ne 0 ]
+    then
+       echo "File restore failed"
+       exit 1
+    fi
+    echo "done."
+
+    source /tmp/irlp-backup/custom/environment
+    STATION=$STATIONID
+    CALL=$CALLSIGN
+fi
+
+#Checks to see if the stationID was generated correctly.
+if [ ${#STATION} -ne "7" ] ; then
+    echo There was an error with your stationID. Please contact installs@irlp.net for assitance.
+    exit 1
+fi
+
+usleep 100000
+
+echo
+echo "*** Setting up IRLP node with callsign $CALL and stationID $STATION ***"
+echo "If there is any problem with the install, you should be able to run irlp-centos-install"
+echo "again if required. Press ENTER to continue, or CTRL-C to exit."
+read
+
+echo -n Adding repeater user ...
+/usr/sbin/useradd -d /home/irlp repeater >/dev/null 2>&1
+echo " done."
+
+echo -n Adding repeater user to the sys and lp groups ...
+/usr/sbin/usermod -d /home/irlp -s /bin/bash -G sys,lp,repeater repeater >/dev/null 2>&1
+echo " done."
+
+echo -n Making IRLP directory structure ...
+rm -rf $ID >/dev/null 2>&1
+mkdir $ID >/dev/null 2>&1
+mkdir $ID/local >/dev/null 2>&1
+mkdir $ID/custom >/dev/null 2>&1
+mkdir $ID/bin >/dev/null 2>&1
+mkdir $ID/run >/dev/null 2>&1
+mkdir $ID/audio >/dev/null 2>&1
+mkdir $ID/scripts >/dev/null 2>&1
+mkdir $ID/log >/dev/null 2>&1
+touch $ID/log/messages >/dev/null 2>&1
+mkdir $ID/.pgp >/dev/null 2>&1
+mkdir $ID/irlp-install-files >/dev/null 2>&1
+echo " done."
+
+echo -n Setting up PGP base directory information ...
+rm -f $ID/.pgp/* >/dev/null 2>&1
+touch $ID/.pgp/pgpdoc1.txt
+touch $ID/.pgp/pgpdoc2.txt
+touch $ID/.pgp/secring.pgp
+touch $ID/.pgp/pubring.pgp
+touch $ID/.pgp/config.txt
+echo " done."
+
+#Cleans the install area of tgz files, to reduce problems of
+#partial downloads
+
+rm -fr $ID/*.tgz
+rm -fr $ID/*.pgp
+
+echo Downloading IRLP software tarfiles into $ID/ ...
+
+cd $ID
+
+#Added Oct13,2002 - This fix to d/l all the files at once, so we 
+#do not have to wait for broken DNS machines. 
+
+echo "Downloading the files from the server"
+wget $TARSERVER/$TARPATH/irlp-centos-dist.tgz
+
+echo Uncompressing Install Images ....
+
+if [ -f $ID/irlp-centos-dist.tgz ] ; then
+    tar -zxf $ID/irlp-centos-dist.tgz
+else
+    echo
+    echo File irlp-centos.tgz is MISSING.... exiting
+    exit 1
+fi
+
+echo -n "Cleaning up install files ..."
+mv -f $ID/*.tgz $ID/irlp-install-files
+echo " done."
+ 
+if [ "$NEW" = "NEW" ]
+then
+  # Making the ENVIRONMENT file from the template ...
+
+  echo -n "Making the $ID/custom/environment file from template ..."
+  echo "# This file is the IRLP ENVIRONMENT file. It is designed to set a list of global varaibles" > $ID/custom/environment
+  echo "# which are used by the software. Be careful when editing this file as a small" >> $ID/custom/environment
+  echo "# error can make you node totally unusable. " >> $ID/custom/environment
+  echo "" >> $ID/custom/environment
+  echo "# Place the callsign of your node below. USE ONLY LOWERCASE LETTERS" >> $ID/custom/environment
+  echo "export CALLSIGN=$CALL" >> $ID/custom/environment
+  echo "" >> $ID/custom/environment
+  echo "# Put the IRLP station ID of your node below. NOTE you must enter the correct stationid" >> $ID/custom/environment
+  echo "# which is assigned to you. Any other ID will cause your node not to operate properly." >> $ID/custom/environment
+  echo "# USE ONLY LOWERCASE LETTERS" >> $ID/custom/environment
+  echo "export STATIONID=$STATION" >> $ID/custom/environment
+  cat $ID/custom/environment.tmpl >> $ID/custom/environment
+  rm -f $ID/custom/environment.tmpl
+  echo " done."
+else
+  rm -f /tmp/irlp-backup/custom/rc.* > /dev/null 2>&1
+  cp -Rpf /tmp/irlp-backup/custom $ID
+fi
+
+# PATCHES to the environment file from things we learned above!
+
+echo "Patching the environment file from lessons learned above... "
+
+if [ .$ROUTEDEVICE != . ] ; then
+    sed "s-ADAPTER_NAME=eth0-ADAPTER_NAME=$ROUTEDEVICE-" /home/irlp/custom/environment > /home/irlp/custom/environment.tmp
+    mv -f /home/irlp/custom/environment.tmp /home/irlp/custom/environment
+fi
+    
+echo " done."
+
+chown -R repeater.repeater /home/irlp
+
+echo -n "Reading in binary files and audio files ..."
+su - repeater /bin/bash -c "/home/irlp/scripts/update files"
+echo " done."
+
+### Add line to rc.local ####
+
+if ! (cat /etc/rc.d/rc.local | grep rc.irlp > /dev/null 2>&1) ; then
+    echo -n Adding start lines to rc.local ...
+    echo "# THESE LINES ARE ADDED FOR THE IRLP SYSTEM" >> /etc/rc.d/rc.local
+    echo $ID/custom/rc.irlp >> /etc/rc.d/rc.local
+    echo " done."
+fi
+
+echo Press ENTER to Continue ; read
+
+if [ "$NEW" = "NEW" ]
+then
+  CONTINUE="NO"
+  while [ "$CONTINUE" = "NO" ] ; do
+      clear
+      echo "**** SETTING UP PGP KEY ****"
+      echo  
+
+      HOME=$ID
+      $ID/bin/pgp -kg -u $STATION
+      rm -f $HOME/.pgp/*.asc
+      $ID/bin/pgp -kxa $STATION $HOME/.pgp/"$STATION".asc $HOME/.pgp/pubring.pgp >/dev/null 2>&1
+      $ID/bin/pgp -kxa $STATION $HOME/.pgp/"$STATION"sec.asc $HOME/.pgp/secring.pgp >/dev/null 2>&1
+
+      #This checks the pgp key, and if incorrect, forces the system to regenerate a new one.
+      if cat $HOME/.pgp/"$STATION".asc | grep pub | grep 512 | grep "$STATION" >/dev/null 2>&1 ; then
+        echo PGP key checks out OK. PGP key generation complete
+        CONTINUE=YES
+      else
+        echo PGP Key generation failed. Please try again.
+        echo -n "Press Enter to continue. " ; read
+        rm -f $HOME/.pgp/secring.*
+        rm -f $HOME/.pgp/*.asc
+        if [ -f $HOME/.pgp/pubring.bak ] ; then 
+          rm -f $HOME/.pgp/pubring.pgp
+          mv $HOME/.pgp/pubring.bak $HOME/.pgp/pubring.pgp
+        fi
+        CONTINUE=NO
+      fi
+    done
+else
+  echo -n "Copying PGP files from backup ..."
+  cp -Rp /tmp/irlp-backup/.pgp $ID
+fi
+
+echo "done!"
+
+echo -n "making the irlp.conf file for Asterisk..."
+
+echo "[general]" > /etc/asterisk/irlp.conf
+echo "node=$STATION" >> /etc/asterisk/irlp.conf
+echo "call=$CALL" >> /etc/asterisk/irlp.conf
+echo "rtcptimeout=10" >> /etc/asterisk/irlp.conf
+echo "localispeakerport=2174" >> /etc/asterisk/irlp.conf
+echo "radmode=no" >> /etc/asterisk/irlp.conf
+echo "audioport=2074" >> /etc/asterisk/irlp.conf
+echo "context=radio-secure" >> /etc/asterisk/irlp.conf
+echo "astnode=$ALLSTAR_NODE" >> /etc/asterisk/irlp.conf
+
+echo "done!"
+
+echo -n "setting up cron for IRLP..."
+crontab -u repeater $ID/custom/irlp.cron
+
+
+CRONPID=`cat /var/run/crond.pid`
+if [ .$CRONPID != . ]
+then
+	kill -1 $CRONPID
+fi
+
+echo "done!"
+
+#### Setting File Permissions ####
+
+echo -n Setting file permissions for IRLP files ...
+
+chmod 660 "$ID"/audio/*
+chmod 750 "$ID"/bin/*
+chmod 750 "$ID"/scripts/*
+chmod 750 "$ID"/custom/*
+
+chmod 750 "$ID"
+chown -R repeater.repeater "$ID"/*
+chown repeater.repeater "$ID"
+chmod 750 "$ID"/custom/rc.irlp
+chown root.root "$ID"/custom/rc.irlp
+chmod 750 "$ID"/custom/environment
+chown root.repeater "$ID"/custom/environment
+chown repeater.repeater "$ID"/.pgp
+chown -R repeater.repeater "$ID"/.pgp/*
+echo " done."
+
+echo -n Setting profile for user repeater ...
+  echo "if [ -f /etc/bashrc ]; then" > $ID/.profile
+  echo "        . /etc/bashrc" >> $ID/.profile
+  echo "fi" >> $ID/.profile
+  echo ". $ID/custom/environment" >> $ID/.profile
+  chown repeater.repeater $ID/.profile
+  chmod 755 $ID/.profile
+echo " done."
+
+echo -n "Reading in PGP public keys ..."
+su - repeater /bin/bash -c "/home/irlp/scripts/update keyring"
+echo " done."
+
+echo -n "Press Enter to Continue : " ; read
+
+clear
+
+if [ "$NEW" = "NEW" ]
+then
+
+# NEW SYSTEM to use FTP to send the public key to the install server using 
+# ncftpput and anonmous FTP
+
+  echo >> /home/irlp/.pgp/$STATION.asc
+  echo >> /home/irlp/.pgp/$STATION.asc
+  echo "SUBJECT=APP_RPT Auto-submission for $STATION-$CALL" >> /home/irlp/.pgp/$STATION.asc
+  echo "Submitted=$DATE" >> /home/irlp/.pgp/$STATION.asc
+  echo "Approx ORDER Date=$ORDER_DATE" >> /home/irlp/.pgp/$STATION.asc
+  echo "Ordered By=$FULL_NAME-$PERSONAL_CALL" >> /home/irlp/.pgp/$STATION.asc
+  echo "Correspondance to=$EMAIL_ADDR" >> /home/irlp/.pgp/$STATION.asc
+
+  echo Sending the public key and authenitication info to the server ....
+  /home/irlp/bin/ncftpput $SERVERIP /pub/install/newkeys/ /home/irlp/.pgp/$STATION.asc
+
+  echo DONE!
+  echo
+
+  echo
+  echo "IRLP INSTALL FINISHED"
+  echo "You should soon receive an email from the installation crew once your PGP"
+  echo "key has been installed. This can take anywhere from 12-48 hours on average."
+  echo "This is for the security of IRLP, so please be patient."
+  echo
+else
+  rm -rf /tmp/irlp-backup > /dev/null 2>&1
+  echo DONE!
+  echo
+
+  echo
+  echo "IRLP REINSTALL FINISHED"
+  echo
+  echo "You should now be able to use your IRLP server. Please be sure to"
+  echo "start the IRLP system by running $ID/custom/rc.irlp."
+  echo
+fi
+

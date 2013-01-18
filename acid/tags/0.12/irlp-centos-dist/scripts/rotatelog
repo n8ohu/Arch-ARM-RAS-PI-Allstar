@@ -1,0 +1,38 @@
+#!/bin/bash
+
+#Rotates the log files (SHOULD ONLY BE RUN FROM CRONTAB)
+#This is rotated every Monday morning at midnight
+
+. /home/irlp/custom/environment
+
+source $SCRIPT/common-functions.sh
+
+LFILES="messages"
+RDEPTH=6 # if RDEPTH=0 then the log data will be dropped on the floor
+cd $LOG
+
+for file in $LFILES ; do
+   if [ -e $file ] ; then
+      if [ $RDEPTH -eq 0 ] ; then
+         rm -f $file* &>/dev/null
+         ln -s /dev/null $file &>/dev/null
+      else
+         if [ -L $file ] ; then # user switch from no log to log?
+            rm -f $file &>/dev/null
+         else
+            i=0
+            while [ $i -lt $RDEPTH ] ; do
+               let d=$RDEPTH-$i
+               let s=$d-1
+               if [ $s -gt 0 ] ; then
+                  mv $file.$s $file.$d &>/dev/null
+               else
+                  mv $file $file.$d &>/dev/null
+                  touch $file &>/dev/null
+               fi
+               let i=$i+1
+            done
+         fi
+      fi
+   fi
+done

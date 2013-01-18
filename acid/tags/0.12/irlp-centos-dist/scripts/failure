@@ -1,0 +1,285 @@
+#!/bin/bash 
+
+#FAILURE SCRIPT HANDLES ALL POSSIBLE FAILURES
+
+[ -z "$SCRIPT" ] && SCRIPT=/home/irlp/scripts
+source $SCRIPT/common-functions.sh
+
+# If the connection fails to be established (IP does not exist, service is not running)
+if [ "$1" = "noconnect" ] ; then
+  "$SCRIPT"/wavplay norespond
+  exit 0
+fi
+
+#ECHOS all errors to logfile
+
+log "$@"
+
+# this is call waiting. - N0PSR
+# Updated 1/4/2001 - Added notification delay, write file to local/call_waiting
+# and check time to see if its ok to tell node user is calling again
+
+if [ "$1" = "busy" -a "$2" = "local" -a "$CALL_WAITING" = "YES" ]; then
+
+   STN="`cat $LOCAL/hosts | grep stn | grep $3 | cut -d' ' -f2`"
+
+   if [ -z "$STN" ] ; then
+      log "Can not determine call waiting STATIONID from $3"
+      exit 1
+   fi
+
+   log "Call Waiting $STN"
+
+   if [ ! -d $LOCAL/call_waiting ]; then
+      mkdir $LOCAL/call_waiting
+   fi
+
+   CWTMP=0
+   if [ -e $LOCAL/call_waiting/$STN ]; then
+      CWTMP="`cat /home/irlp/local/call_waiting/$STN`"
+   fi
+   CWTMP1="`date +%s`"
+   echo "$CWTMP1" > $LOCAL/call_waiting/$STN
+
+   # DoS Check.
+   # check if station calling hasn't tried to call in the last x seconds
+
+   # Station hasn't tried to call do tell us about it.
+   if [ `expr $CWTMP1 - $CWTMP` -gt 120 ]  ; then
+      while ! $BIN/pttstate; do
+         usleep 250000;
+      done;
+
+      set_node_digits $STN NUM1 NUM2 NUM3 NUM4
+      $SCRIPT/wavplay callwaiting $NUM1 $NUM2 $NUM3 $NUM4
+
+      echo "$STN" > $LOCAL/cwid
+      exit 1
+   else
+      log "To soon for caller id $STN"
+      exit 1
+   fi
+fi
+
+if [ "$1" = "busy" -a "$2" = "local" -a "$CALL_WAITING" != "YES" ]; then
+  log "Call Waiting not enabled."
+  exit 0
+fi
+
+# ----  Done Call Waiting --
+
+# If the IP does not exist in the hosts file, you may want to have this message play.
+# This can be a fun tool for hackers, so it can be disabled easily.
+
+if [ "$1" = "noexist" ] ; then
+  if [ "$NOEXIST_INFORM" = "YES" ] ; then
+    $SCRIPT/wavplay noexist
+  fi
+  exit 0
+fi
+
+# When the IP is detected as valid, but the PGP is not in the keyring.
+if [ "$1" = "nopgpkey" ] ; then
+  $SCRIPT/wavplay nopgpkey
+  exit 0
+fi
+
+if [ "$1" = "busy" -a "$2" != "local" ] ; then
+  set_node_digits $2 NUM1 NUM2 NUM3 NUM4
+  if echo $2 | grep "ref" >/dev/null ; then
+    $SCRIPT/wavplay busynode reflector $NUM1 $NUM2 $NUM3 $NUM4
+  else
+    $SCRIPT/wavplay busynode nodenum $NUM1 $NUM2 $NUM3 $NUM4
+  fi
+
+# ADDED for support of a script to check if a node is busy
+  if [ "$CHECKBUSY" = "YES" ] ; then
+    cat $LOCAL/hosts | grep stn | grep "`cat $LOCAL/calledip`" | cut -d' ' -f2 > $LOCAL/busyid
+  fi
+  exit 0
+fi
+
+if [ "$1" = "update" -a "$2" = "getline" ]; then
+  exit 0
+fi
+
+if [ "$1" = "updater" ]; then
+  exit 0
+fi
+
+if [ "$1" = "disabled" -a "$2" != "local" ]; then
+  $SCRIPT/wavplay nodedisabled
+  exit 0
+fi
+
+if [ "$1" = "disabled" -a "$2" = "local" ]; then
+  exit 0
+fi
+
+if [ "$1" = "lockout" -a "$2" = "local" ]; then
+  $SCRIPT/wavplay lockout_local
+  $SCRIPT/irlp_reset
+  exit 0
+fi
+
+if [ "$1" = "lockout" -a "$2" = "remote" ]; then
+  $SCRIPT/wavplay lockout_remote
+  $SCRIPT/irlp_reset
+  exit 0
+fi
+
+if [ "$1" = "pttlock" ]; then
+  $SCRIPT/wavplay error pttlock
+  $SCRIPT/off
+  exit 0
+fi
+
+if [ "$1" = "coslock" ]; then
+  $SCRIPT/wavplay error coslock
+  $SCRIPT/off
+  exit 0
+fi
+
+if [ "$1" = "timeout" ] ; then
+  if [ "$2" = "answer" ] ; then exit 0 ; fi
+  if [ "$2" = "call" ] ; then 
+    $SCRIPT/wavplay error connecttimeout
+    exit 0
+  fi
+  if [ "$2" = "connect" ] ; then 
+    $SCRIPT/wavplay error connecttimeout
+    exit 0
+  fi
+  if [ "$2" = "loop" ] ; then 
+    $SCRIPT/wavplay error nettimeout
+    $SCRIPT/irlp_reset
+    $SCRIPT/off
+    exit 0
+  fi
+fi
+
+if [ "$1" = "link" ] ; then
+  if [ "$2" = "loop" ] ; then 
+    $SCRIPT/wavplay error nettimeout
+    $SCRIPT/irlp_reset
+    $SCRIPT/off
+    exit 0
+  fi
+  if [ "$2" = "call" ] ; then 
+    $SCRIPT/wavplay error contactirlp 8 0
+    $SCRIPT/irlp_reset
+    $SCRIPT/off
+    exit 0
+  fi
+fi
+  
+if [ "$1" = "auth" -o "$2" = "auth" ] ; then
+  if [ -f $LOCAL/calledip ] ; then
+    $SCRIPT/wavplay error failauth
+  fi
+  if [ ! -f $LOCAL/active ] ; then
+    $SCRIPT/irlp_reset
+  fi
+  exit 0
+fi
+
+if [ "$1" = "syntax" ] ; then
+  $SCRIPT/wavplay error contactirlp 0 1
+  $SCRIPT/irlp_reset
+  exit 0
+fi
+
+if [ "$1" = "invalidIP" ] ; then
+  $SCRIPT/wavplay error contactirlp 1 7
+  $SCRIPT/irlp_reset
+  exit 0
+fi
+
+if [ "$1" = "fopen-authtempasc" ] ; then
+  $SCRIPT/wavplay error contactirlp 2 0
+  $SCRIPT/irlp_reset
+  exit 0
+fi
+
+if [ "$1" = "fprintf-authtemp" ] ; then
+  $SCRIPT/wavplay error contactirlp 2 1
+  $SCRIPT/irlp_reset
+  exit 0
+fi
+
+if [ "$1" = "fopen-authtemp" ] ; then
+  $SCRIPT/wavplay error contactirlp 2 2
+  $SCRIPT/irlp_reset
+  exit 0
+fi
+
+if [ "$1" = "fprintf-chaltempasc" ] ; then
+  $SCRIPT/wavplay error contactirlp 2 3
+  $SCRIPT/irlp_reset
+  exit 0
+fi
+
+if [ "$1" = "fopen-chaltempasc" ] ; then
+  $SCRIPT/wavplay error contactirlp 2 4
+  $SCRIPT/irlp_reset
+  exit 0
+fi
+
+if [ "$1" = "siggen" ] ; then
+  $SCRIPT/wavplay error pgp-error
+  $SCRIPT/irlp_reset
+  exit 0
+fi
+
+if [ "$1" = "envir" ] ; then
+  $SCRIPT/wavplay error contactirlp 3 0
+  $SCRIPT/irlp_reset
+  exit 0
+fi
+
+if [ "$1" = "mkfifo" ] ; then
+  $SCRIPT/wavplay error contactirlp 3 1
+  $SCRIPT/irlp_reset
+  exit 0
+fi
+
+if [ "$1" = "chdir" ] ; then
+  $SCRIPT/wavplay error contactirlp 3 2
+  $SCRIPT/irlp_reset
+  exit 0
+fi
+
+if [ "$1" = "gettimeofday" ] ; then
+  $SCRIPT/wavplay error contactirlp 3 3
+  $SCRIPT/irlp_reset
+  exit 0
+fi
+
+if [ "$1" = "fork" ] ; then
+  $SCRIPT/wavplay error contactirlp 3 4
+  $SCRIPT/irlp_reset
+  exit 0
+fi
+
+if [ "$1" = "fifo" ] ; then
+  $SCRIPT/wavplay error contactirlp 3 5
+  $SCRIPT/irlp_reset
+  exit 0
+fi
+
+if [ "$1" = "select" ] ; then
+  $SCRIPT/wavplay error contactirlp 3 6
+  $SCRIPT/irlp_reset
+  exit 0
+fi
+
+if [ "$1" = "audiodev" ] ; then
+  $SCRIPT/wavplay error contactirlp 4 0
+  $SCRIPT/irlp_reset
+  exit 0
+fi
+
+$SCRIPT/wavplay error contactirlp 9 9
+log "ERROR 99 : error in in line above"
+$SCRIPT/irlp_reset
+exit 0

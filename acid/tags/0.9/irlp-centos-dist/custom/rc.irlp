@@ -1,0 +1,46 @@
+#!/bin/bash
+#=======================================================================
+# filename:	rc.irlp
+# description:	This script is called at system startup to start the
+#               IRLP node. Usually called from /etc/rc.d/rc.local
+# NOTES:	/home/irlp/custom/environment contains the variable
+#               definitions required.
+#		$BIN     = /home/irlp/bin - IRLP core executeables
+#               $SCRIPTS = /home/irlp/scripts - IRLP core scripts
+#		$CUSTOM  = /home/irlp/custom - IRLP user defined scripts
+#
+#		ALL portions of the script that relate to IRLP hardware
+#		or special IRLP sftware have been commented out.
+# updated:
+# 20081109	kc6hur	Reconfigured for Limey-Linux app-rpt chan_irlp
+#=======================================================================
+# SOURCES THE ENVIRONMENT FILE
+#
+if [ -f /home/irlp/custom/environment ] ; then
+  . /home/irlp/custom/environment
+else
+  echo "ERROR! - IRLP Environment file not found. Can not start IRLP."
+  exit 1
+fi
+
+echo "Starting IRLP services:"
+#
+# STARTS THE LISTENER FOR THE IRLP COMMS
+#
+killall -9 mynetd &>/dev/null
+sleep 2
+echo -n "                  irlpd... "
+/bin/su -c "$BIN/mynetd 15425 $BIN/irlpd &>/dev/null" - repeater
+echo "done."
+
+echo -n "Updating IRLP hosts file... "
+  /bin/su -c "$SCRIPT/update hosts &>/dev/null" - repeater &
+echo "(put in background) done!"
+
+echo -n "Updating IRLP dns server... "
+  /bin/su -c "$SCRIPT/ipupdate &>/dev/null" - repeater &
+echo "(put in background) done!"
+
+echo -n "Enabling IRLP node... "
+  /bin/su -c "$SCRIPT/enable &>/dev/null" - repeater
+echo "done!"

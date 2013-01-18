@@ -1,0 +1,10 @@
+#!/bin/bash
+#=======================================================================
+# filname:	fifoecho
+# description:	This script is used to send information to the remote
+#		node.
+#=======================================================================
+[ -z "$SCRIPT" ] && SCRIPT=/home/irlp/scripts
+source $SCRIPT/common-functions.sh
+
+(echo $@ > $FIFO & sleep 1 ; killall echo; killall fifoecho) &>/dev/null &

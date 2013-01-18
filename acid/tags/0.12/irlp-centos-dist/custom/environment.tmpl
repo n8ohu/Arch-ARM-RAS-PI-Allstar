@@ -1,0 +1,114 @@
+
+# Put your desired CODEC here. 
+#UNCOMP = high speed broadband access, HALF DUPLEX
+#ADPCM = broadband access, HALF DUPLEX
+#GSM = dialup modem, HALF DUPLEX
+#UNCOMP_FD = broadband, FULL DUPLEX
+#ADPCM_FD = broadband, FULL DUPLEX
+#GSM_FD = dialup modem, FULL DUPLEX
+
+# DO NOT setup your codec for full duplex unless you are sure your 
+# node radio equipment is capable.
+
+export DEFAULTCODEC=UNCOMP_FD
+
+# Choose features you don't want below and replace the YES with NO.
+# REPORTBUSY reports your node busy when someone using it locally
+# NOEXIST_INFORM informs users if a node does not exist when called
+# NOUPDATE copies a set number of files back after an update
+# DTMF_REGENERATION allows DTMF tones send from the remote node
+#                   to be regenerated on your node
+export REPORTBUSY=YES
+export NOEXIST_INFORM=YES
+export NOUPDATE=YES
+export DTMF_REGENERATION=YES
+
+# This sets whether your node uses call waiting or not. By default it is 
+# set to YES. To turn off call waiting, comment out the following line
+export CALL_WAITING="YES"
+
+# Sets the reflector timeout value in seconds.
+# If you do not want the reflectors to timeout at all, just enter 0
+export REFLECT_TIMEOUT_VALUE=1200
+
+# If you can resolve your IP locally, put the adapter below which 
+# controls your routable IP address (I.E. eth0, ppp0, etc...)
+export ADAPTER_NAME=eth0
+
+# This flag triggers the ability to run your own custom scripts when 
+# a node starts and stops. Use this feature to start or stop a CW ID, 
+# play reminders, etc
+# You have to create script files in /home/irlp/custom called custom_on
+# and/or custom_off.
+#export CUSTOM_ON=YES
+#export CUSTOM_OFF=YES
+
+# These lines are designed for systems that use controller macros to 
+# turn on and off hangtimes and courtesy tones.
+# Write "YES" on the line below if you are using this.
+export DTMF_ONOFF_MACROS=NO
+
+# If you use a prefix for IRLP, uncomment the line and enter it below.
+# EX: if the code for Tijuana is 1400, and your code is 1231400,
+# the prefix is 123
+#export DTMFPREFIX=123
+
+# Points to the script used to load your mixer settings
+export MIXER_LOAD="/usr/bin/aumix -L"
+
+# Can fix some sound cards that can not do 16-bit audio. If this flag 
+# fixes your problems of no audio, then you should look at obtaining 
+# a card with 16 bit audio.
+#export FORCE_8BIT=YES
+
+# This sets a user-defined delay to be used between key up and recorded
+# audio files. This is in microseconds! EX:500000 = 0.5 seconds 
+# To activate, remove hash in front of the next line. 
+#export TXDELAY=500000
+
+# This sets whether the customized audio files for a node are played,
+# or if the generic "node number 1 2 3 4" are played. This also disables
+# the downloading of updated customized audio files. Uncomment to set 
+# this value to NO, disabling hearing/downloading custom audio files.
+# NOTE: set this to NO on Lime-Linux and other embedded systems due to
+#       huge amount of space required for custom_id files.
+export PLAY_CUSTOM_IDS=NO
+
+# This sets the volume ratio of the DTMF regenration and DTMF dialing
+# scripts. The value should be between 0 and 100. It needs to be
+# formatted as follows
+# "--volume 30"
+#export DIAL_OPTIONS="--volume 30" 
+
+# Some networks do not allow outbound data on port 873. Uncomment the 
+# following line to force the RSYNC updates to use port 8873 instead.
+#export RSYNC8873=YES
+
+
+#==== you should not have to edit anything below =============
+
+export HOME=/home/irlp
+export IRLPDIR=$HOME
+export PATH="$PATH":$IRLPDIR/bin:$IRLPDIR/custom:$IRLPDIR/scripts
+export SCRIPT=$IRLPDIR/scripts
+export BIN=$IRLPDIR/bin
+export AUDIO=$IRLPDIR/audio
+export CUSTOM=$IRLPDIR/custom
+export RUN=$IRLPDIR/run
+export FIFO=$RUN/fifo
+export LOCAL=$IRLPDIR/local
+export LOG=$IRLPDIR/log
+export LOGFILE=$LOG/messages
+export ACTIVE=$LOCAL/active
+export TIMEOUT=$LOCAL/timeout
+export ENABLE=$LOCAL/enable
+export HOSTFILE=$LOCAL/irlphosts
+export TIMING=$CUSTOM/timing
+export TIMEOUTVALUE=$CUSTOM/timeoutvalue
+export DECODEFILENAME=$SCRIPT/decode
+export LOCKFILE=$RUN/lock
+export IRLP_PORT=15425
+export IRLP_UPDATE=15426
+export PGP263=$BIN/pgp
+
+export RUN_ENV=TRUE

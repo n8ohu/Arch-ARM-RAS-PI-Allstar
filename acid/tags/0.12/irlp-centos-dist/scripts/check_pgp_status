@@ -1,0 +1,23 @@
+#!/bin/bash
+#=======================================================================
+# filename:	check_pgp_status
+# description:	Checks to see if a PGP key exists for the node.
+#=======================================================================
+[ -z "$SCRIPT" ] && SCRIPT=/home/irlp/scripts
+source $SCRIPT/common-functions.sh
+
+KEYID="$STATIONID"
+
+if [ "$1" != "noupdate" ] ; then
+  echo -n "Updating pgp keyring ... "
+  $SCRIPT/update keyring >/dev/null 2>&1
+  echo "done."
+fi
+
+if ($BIN/pgp -kv $KEYID 2>/dev/null | grep 512 | grep $KEYID >/dev/null 2>&1 ) ; then
+  echo "Your Public PGP key exists in the keyring."
+  exit 0
+else
+  echo "Your public PGP key does not exist in the keyring."
+  exit 1
+fi

@@ -1,0 +1,19 @@
+#!/bin/bash
+#=======================================================================
+# filename:	statupdate_cron
+# description:	This is a wrapper for the statupdate script for adding
+#		a delay unique to the node number when caling statupdate
+#		as a cron job. Because ALL nodes run this job at the
+#		same time, the delay added by this script staggers the
+#		time where they hit the IRLP servers.
+#=======================================================================
+
+[ -z "$SCRIPT" ] && SCRIPT=/home/irlp/scripts
+source ${SCRIPT}/common-functions.sh
+ 
+STATIONNUM=${CONVERTED_STATIONID#*stn}
+ 
+let "NUM=${STATIONNUM} % 600"
+[ ! -z "$NUM" ] && sleep "$NUM"
+ 
+${SCRIPT}/statupdate

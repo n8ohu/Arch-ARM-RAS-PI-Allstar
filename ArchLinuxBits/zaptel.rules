@@ -1,0 +1,11 @@
+# udev rules to generate the /dev/zap device files (if not yet provided 
+# by your distribution):
+KERNEL=="zapctl", SYMLINK+="zap/ctl"
+KERNEL=="zaptranscode", SYMLINK+="zap/transcode"
+KERNEL=="zaptimer", SYMLINK+="zap/timer"
+KERNEL=="zapchannel", SYMLINK+="zap/channel"
+KERNEL=="zappseudo", SYMLINK+="zap/pseudo"
+KERNEL=="zap[0-9]*", SYMLINK+="zap/%n"
+
+# zaptel devices with ownership/permissions for running as non-root
+SUBSYSTEM=="zaptel",  OWNER="asterisk", GROUP="asterisk", MODE="0660"

@@ -1,0 +1,17 @@
+#!/bin/bash
+
+[ -z "$SCRIPT" ] && SCRIPT=/home/irlp/scripts
+source $SCRIPT/common-functions.sh
+
+if [ ! -f $LOCAL/enable ] ; then exit 1 ; fi
+
+#LOGS the disable
+log "Node Disabled"
+
+if [ -f $LOCAL/active ]; then
+  echo "The node is active...  Disconnecting first"
+  $SCRIPT/off
+fi
+echo "Disabling node"
+rm -f $LOCAL/enable
+$SCRIPT/statupdate &

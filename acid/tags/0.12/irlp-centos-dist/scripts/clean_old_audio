@@ -1,0 +1,62 @@
+#!/bin/bash
+#========================================================================
+# filename:	clean_old_audio
+# description:	This file is used to get rid of custom audio files for
+#		nodes that have been delisted.
+# NOTE:		This file may not be necessary as custom audio files are
+#		downloaded onto embedded or Limey-Linuz app_rpt chan_irlp
+#               nodes. They just don't have the storage cpacity.
+#========================================================================
+[ -z "$SCRIPT" ] && SCRIPT=/home/irlp/scripts
+source $SCRIPT/common-functions.sh
+
+# extract "valid" node numbers from the pgp keyring
+rm -f $RUN/pgp_dump
+pgp -kv stn 2>/dev/null > $RUN/pgp_dump
+
+cd /home/irlp/audio
+
+for i in stn*on.wav; do
+  KEYEXISTS=NO
+
+  NODE=${i%o*.wav}
+
+  if (grep $NODE $RUN/pgp_dump > /dev/null) ; then KEYEXISTS=YES ; fi
+
+  # If node ends in a ZERO, we try both the "zeroed" key and the non-zeroed key
+  if [ ${NODE#stn???} = "0" ] ; then
+    NODE2=${NODE%?}
+    if (grep ${NODE2}$ $RUN/pgp_dump > /dev/null) ; then KEYEXISTS=YES ; fi
+  fi
+
+  if [ $KEYEXISTS != YES ] ; then
+    echo -n "Removing audio files for $NODE ..."
+    rm -f /home/irlp/audio/${NODE}o*.wav
+    echo "${NODE}on.wav ${NODE}off.wav"
+  fi
+done
+
+# If any offs still exist.... (in case of off but no on)
+
+for i in stn*off.wav; do
+  KEYEXISTS=NO
+
+  NODE=${i%o*.wav}
+
+  if (grep $NODE $RUN/pgp_dump > /dev/null) ; then KEYEXISTS=YES ; fi
+
+  # If node ends in a ZERO, we try both the "zeroed" key and the non-zeroed key
+  if [ ${NODE#stn???} = "0" ] ; then
+    NODE2=${NODE%?}
+    if (grep ${NODE2}$ $RUN/pgp_dump > /dev/null) ; then KEYEXISTS=YES ; fi
+  fi
+
+  if [ $KEYEXISTS != YES ] ; then
+    echo -n "Removing audio files for $NODE ..."
+    rm -f /home/irlp/audio/${NODE}o*.wav
+    echo "${NODE}on.wav ${NODE}off.wav"
+  fi
+done
+
+rm -f $RUN/pgp_dump
+

@@ -1,0 +1,120 @@
+#!/bin/bash
+
+[ -z "$SCRIPT" ] && SCRIPT=/home/irlp/scripts
+source ${SCRIPT}/common-functions.sh
+
+if [ -f $LOCAL/last_ipupdate ] ; then
+  CURRENT_TIME="`/bin/date +%s`"
+  LAST_UPDATE="`cat $LOCAL/last_ipupdate`"
+  TIME_SINCE_UPDATE="`expr $CURRENT_TIME - $LAST_UPDATE`"
+
+  if [ "$TIME_SINCE_UPDATE" -le "60" ] ; then
+    echo "You must wait at least 60 seconds between IP-updates"
+    exit 1
+  fi
+fi
+
+# Added to solve bug that some nodes dont have IRLP_UPDATE in their
+# environment files:
+export IRLP_UPDATE=15426
+
+# Gets the latest IP from the dyndns.org servers.
+# If it cant get an IP, it goes to the IRLP servers.
+
+if ( $NETCAT -z -w5 checkip.dyndns.org 80 ) ; then
+  NEWIPADDRESS=`wget -q --timeout=2 -O- http://checkip.dyndns.org:8245 2>/dev/null | cut -d":" -f2 | cut -d" " -f2 | cut -d"<" -f1`
+fi
+
+if [ -z ${NEWIPADDRESS} ] ; then
+  if ( ${NETCAT} -z -w5 63.208.196.105 80 ) ; then
+  NEWIPADDRESS=`wget -q --timeout=2 -O- http://63.208.196.105:8245 2>/dev/null | cut -d":" -f2 | cut -d" " -f2 | cut -d"<" -f1`
+  fi
+fi  
+
+if [ -z ${NEWIPADDRESS} ] ; then
+  if ( $NETCAT -z -w5 204.13.250.51 80 ) ; then
+  NEWIPADDRESS=`wget -q --timeout=2 -O- http://204.13.250.51:8245 2>/dev/null | cut -d":" -f2 | cut -d" " -f2 | cut -d"<" -f1`
+  fi
+fi  
+
+if [ -z ${NEWIPADDRESS} ] ; then
+  # First we determine what IP we are going to for updates
+  echo -n "Obtaining best server IP ... "
+  export SERVERIP="`${SCRIPT}/find_best_server`"
+  echo "found SERVER IP = ${SERVERIP}"
+  NEWIPADDRESS="`${NETCAT} -w5 ${SERVERIP} 10000 | cut -d'=' -f2`"
+else
+  echo "RECENT IP address obtained from dyndns.org"
+fi
+
+# Gets the last IP address from the LOCAL directory
+# We run a random number generator from 0-19, and
+# only get the IP from the server on a zero. This
+# will make sure nodes will check the server from time
+# to time.
+
+let "DICE=${RANDOM} % 20"
+echo ${DICE}
+
+if [ $DICE -eq 0 ] ; then
+  rm -f ${LOCAL}/last_ip_address
+fi
+
+# This is temporarily set to force nodes to get their IPs from the servers
+# This is used for node cleanup times
+# Nov 9, 2007 VE7LTD
+# rm -f $LOCAL/last_ip_address
+
+
+if [ -f ${LOCAL}/last_ip_address ] ; then
+  OLDIPADDRESS=`cat ${LOCAL}/last_ip_address`
+  echo "Obtaining last IP from file."
+fi
+
+if [ -z ${OLDIPADDRESS} ] ; then
+  export SERVERIP="`${SCRIPT}/find_best_server`"
+  OLDIPADDRESS=`echo ${CONVERTED_STATIONID} | ${NETCAT} -w2 ${SERVERIP} 15428`
+  echo "Obtaining last IP from server."
+fi
+
+echo "The CURRENT IP is : ${NEWIPADDRESS}"
+echo "The LAST IP was   : ${OLDIPADDRESS}"
+
+if [ "$NEWIPADDRESS" = "" ] ; then
+  echo "Comms error to server ${SERVERIP}. Cant obtain current IP"
+  log "ipupdate: Comms error to server ${SERVERIP}. Cant obtain current IP"
+  exit 1
+fi
+
+if [ "$OLDIPADDRESS" = "$NEWIPADDRESS" ] ; then 
+  echo Your IP address has not changed
+  echo ${NEWIPADDRESS} > ${LOCAL}/last_ip_address
+  exit 0
+fi
+
+if [ "$OLDIPADDRESS" = "NOEXIST" ] ; then
+  echo "CURRENT IP address ${NEWIPADDRESS} not found on server ${SERVERIP}"
+  echo "Registering ${NEWIPADDRESS}"
+  log "ipupdate: The IP has not been registered yet. Registering ${NEWIPADDRESS}"
+fi
+
+if [ "$OLDIPADDRESS" = "" ] ; then
+  echo "Comms error to server ${SERVERIP}. Registering ${NEWIPADDRESS}"
+  log "ipupdate: Comms error to server ${SERVERIP}. Registering ${NEWIPADDRESS}"
+fi
+
+if [ "$OLDIPADDRESS" != "$NEWIPADDRESS" ] ; then
+  echo "The IP has changed from ${OLDIPADDRESS} to ${NEWIPADDRESS}"
+  echo "Registering ${NEWIPADDRESS}"
+  log "ipupdate: The IP has changed from ${OLDIPADDRESS} to ${NEWIPADDRESS}"
+fi
+
+echo ${NEWIPADDRESS} > ${LOCAL}/last_ip_address
+
+export SERVERIP="`${SCRIPT}/find_best_server`"
+
+${BIN}/irlp_update_client "${NEWIPADDRESS}"
+
+/bin/date +%s > ${LOCAL}/last_ipupdate
+
+exit 0

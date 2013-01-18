@@ -1,0 +1,64 @@
+#!/bin/bash
+
+[ -z "$SCRIPT" ] && SCRIPT=/home/irlp/scripts
+source $SCRIPT/common-functions.sh
+
+if [ ! -f $LOCAL/enable ]; then exit 1 ; fi 
+if [ ! -f $LOCAL/active ]; then exit 1 ; fi 
+
+#LOGS the disconnect
+log "Node Disconnect $1 from `cat $LOCAL/active`"
+
+##############################################################
+# added 1/7/02 by n0psr.
+# remove temp files created while node was in use.
+# 1/8/02 added additional checks to prevent errors.
+
+if [ -d $LOCAL/call_waiting ]; then
+  cd $LOCAL/call_waiting
+  rm -fr *
+fi
+################################################
+
+if grep ref $LOCAL/active >/dev/null ; then
+  mv -f $CUSTOM/timeoutvalue.temp $CUSTOM/timeoutvalue &>/dev/null
+  if [ "$1" = "timeout" ] ; then
+    $SCRIPT/off timeout
+  elif [ "$1" = "blocked" ] ; then
+    $SCRIPT/off blocked
+  else
+    $SCRIPT/off
+  fi
+  exit 0
+fi
+
+if grep echo $LOCAL/active >/dev/null ; then
+  mv -f $CUSTOM/timeoutvalue.temp $CUSTOM/timeoutvalue &>/dev/null
+  if [ "$1" = "timeout" ] ; then
+    $SCRIPT/off timeout
+  else
+    $SCRIPT/off
+  fi
+  exit 0
+fi
+
+if [ "$1" = "timeout" ] ; then
+  $SCRIPT/fifoecho "$STATIONID" disconnect timeout
+  $SCRIPT/dropcall
+  $SCRIPT/off timeout
+elif [ "$1" = "pttlock" ] ; then
+  $SCRIPT/fifoecho "$STATIONID" disconnect coslock
+  $SCRIPT/wavplay pttlock
+  $SCRIPT/dropcall
+  $SCRIPT/off
+elif [ "$1" = "coslock" ] ; then
+  $SCRIPT/fifoecho "$STATIONID" disconnect pttlock
+  $SCRIPT/wavplay coslock
+  $SCRIPT/dropcall
+  $SCRIPT/off
+  $SCRIPT/failure coslock
+else
+  $SCRIPT/fifoecho "$STATIONID" disconnect
+  $SCRIPT/dropcall
+  $SCRIPT/off
+fi

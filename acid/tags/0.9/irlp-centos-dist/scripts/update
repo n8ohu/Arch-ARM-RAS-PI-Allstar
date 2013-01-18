@@ -1,0 +1,177 @@
+#!/bin/bash
+#======================================================================
+# filename:	update
+# Description:	Used to update the various IRLP files. Called with the
+#		following parameters:
+#		hosts	- update the local hosts file
+#		files	- update the core IRLP files
+#		keyring	- update the local PGP keyring
+# syntax:	update hosts|files|keyring
+#======================================================================
+. /home/irlp/custom/environment
+source ${SCRIPT}/common-functions.sh
+
+BIN=/home/irlp/bin
+
+if [ "$1" = "" ] ; then exit 1 ; fi
+
+#First we determine what IP we are going to for updates
+
+echo -n "Obtaining best server IP ... "
+SERVERIP=`${SCRIPT}/find_best_server`
+echo "found IP = $SERVERIP"
+
+UPDATEDIR=$IRLPDIR/update-files
+
+# Remove old programs and scripts from system
+rm -f ${SCRIPT}/keepalive
+rm -f ${BIN}/imike_PCI
+rm -f ${BIN}/ispeaker_PCI
+rm -f ${BIN}/screen
+rm -f ${BIN}/pulsecheck
+rm -f ${BIN}/imike-fd
+rm -f ${BIN}/ispeaker-fd
+
+#======================================================================
+# UPDATE: hosts
+#======================================================================
+if [ "$1" = "hosts" ] ; then
+
+echo "Performing hosts update"
+
+#Prevents multiple instances of this from running
+  if [ -f ${RUN}/hostupdatelock ] ; then
+    echo Update already pending
+    exit 0
+  else
+    touch ${RUN}/hostupdatelock
+  fi
+  trap "rm -f ${RUN}/hostupdatelock" EXIT
+
+  wget -q -t1 -O ${RUN}/hosts.gz http://${SERVERIP}:15427/hosts/hosts.gz >/dev/null 2>&1
+
+  gunzip ${RUN}/hosts.gz >/dev/null 2>&1
+
+  if ! [ -f ${RUN}/hosts ] ; then
+    echo "Gzipped file was unavailable, downloading hosts.update direct"
+    wget -q -t1 -O ${RUN}/hosts http://${SERVERIP}:15427/hosts/hosts.update >/dev/null 2>&1
+  fi
+
+  if (grep ENDfile ${RUN}/hosts >/dev/null 2>&1) ; then
+    cp -f ${RUN}/hosts ${LOCAL}/hosts
+    cp -f ${RUN}/hosts ${CUSTOM}/hosts
+  else
+    echo "ERROR: Hosts file seems invalid"
+    cp -f ${CUSTOM}/hosts ${LOCAL}/hosts
+  fi
+  rm -f ${RUN}/hosts
+  rm -f ${RUN}/hosts.gz
+  exit 0
+fi
+
+#======================================================================
+# UPDATE: files
+#======================================================================
+ if [ "$1" = "files" ] ; then
+ 
+echo "Performing file update ..."
+   
+# Prevents multiple instances of this from running
+   if [ -f ${RUN}/updatelock ] ; then
+     echo Update already pending, exiting
+     exit 0
+   else
+     touch ${RUN}/updatelock
+   fi
+ 
+   trap "rm -f ${RUN}/updatelock" EXIT
+ 
+# Cleanup for files that slipped through from time to time.
+ 
+   while [ -f ${LOCAL}/active ]; do
+     echo "Node is connected, sleeping 30 seconds and trying again."
+     sleep 30
+   done
+ 
+   mkdir -p $UPDATEDIR
+
+   if [ "$OPTION10" = "YES" ] || [ "$RSYNC8873" = "YES" ] ; then  
+     rsync --timeout=120 --port=8873 --exclude=stn*.wav -Wazv $SERVERIP::irlp $UPDATEDIR
+   else
+     rsync --timeout=120 -Wazv  --exclude=stn*.wav $SERVERIP::irlp $UPDATEDIR
+   fi
+
+   killall mynetd > /dev/null 2>&1
+
+   for i in irlp_answer irlp_call irlp_ref_auth_client irlp_update_client \
+irlp_wave_client mynetd nc pgp remote_admin_server rsync pgp nc
+   do
+	cp $UPDATEDIR/bin/$i $IRLPDIR/bin/$i
+	chown repeater.repeater $IRLPDIR/bin/$i
+	chmod 750 $IRLPDIR/bin/$i
+   done
+
+   cp $UPDATEDIR/audio/* $IRLPDIR/audio
+   cp $UPDATEDIR/scripts/exp-x-reference $IRLPDIR/scripts
+
+   cp /usr/bin/wget $IRLPDIR/bin
+   cp /usr/bin/sox $IRLPDIR/bin
+
+   # We will reset file permissions, just incase...
+   
+   chmod 750 ${IRLPDIR}/audio/* >/dev/null 2>&1
+   chmod 660 ${IRLPDIR}/audio/*.wav >/dev/null 2>&1
+   chmod 750 ${IRLPDIR}/bin/* >/dev/null 2>&1
+   chmod 750 ${IRLPDIR}/scripts/* >/dev/null 2>&1
+   chmod 750 ${IRLPDIR}/custom/* >/dev/null 2>&1
+ 
+   chown -R repeater.repeater ${IRLPDIR}/* >/dev/null 2>&1
+   chown repeater.repeater ${IRLPDIR}/.pgp >/dev/null 2>&1
+   chown -R repeater.repeater ${IRLPDIR}/.pgp/* >/dev/null 2>&1
+   
+   ${SCRIPT}/process_check
+   ${SCRIPT}/irlp_reset
+ 
+   exit 0
+fi
+
+#======================================================================
+# UPDATE: keyring
+#======================================================================
+if [ "$1" = "keyring" ] ; then
+
+echo "Performing public keyring update ..."
+  
+#Prevents multiple instances of this from running
+  if [ -f ${RUN}/pubringlock ] ; then
+    echo Update already pending, exiting
+    exit 0
+  else
+    touch ${RUN}/pubringlock
+  fi
+
+  trap "rm -f ${RUN}/pubringlock" EXIT
+
+  if [ "$OPTION10" = "YES" ] || [ "$RSYNC8873" = "YES" ] ; then  
+    ${BIN}/rsync --timeout=120 --port=8873 -Wazv ${SERVERIP}::irlp/pubring.pgp ${IRLPDIR}
+  else
+    ${BIN}/rsync --timeout=120 -Wazv ${SERVERIP}::irlp/pubring.pgp ${IRLPDIR}
+  fi
+
+  # NEW - Create a symbolic link for the public keyring
+  # This reduces the file size by about a half meg
+  ln -fs ${IRLPDIR}/pubring.pgp ${IRLPDIR}/.pgp/pubring.pgp
+  
+  # We will reset file permissions, just incase...
+  
+  chmod 750 ${IRLPDIR}/bin/* >/dev/null 2>&1
+  chmod 750 ${IRLPDIR}/scripts/* >/dev/null 2>&1
+  chmod 750 ${IRLPDIR}/custom/* >/dev/null 2>&1
+
+  chown -R repeater.repeater ${IRLPDIR}/* >/dev/null 2>&1
+  chown repeater.repeater ${IRLPDIR}/.pgp >/dev/null 2>&1
+  chown -R repeater.repeater ${IRLPDIR}/.pgp/* >/dev/null 2>&1
+  
+  exit 0
+fi
+

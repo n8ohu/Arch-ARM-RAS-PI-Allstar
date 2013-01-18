@@ -1,0 +1,30 @@
+#!/bin/bash
+#=======================================================================
+# filename:	irlp_reset
+# description:	resets the IRLP node to normal IDLE state
+#=======================================================================
+# Info sent from the control or reply script
+# SYNTAX <on RemoteSTATIONID CODEC RemoteIP (notimeout)>
+
+[ -z "$SCRIPT" ] && SCRIPT=/home/irlp/scripts
+source ${SCRIPT}/common-functions.sh
+
+# Added to run custom_off in case of reset.
+if [ "$CUSTOM_OFF" = "YES" -a -x $CUSTOM/custom_off ] ; then
+   $CUSTOM/custom_off
+fi
+
+killall irlp_call &>/dev/null
+killall irlp_answer &>/dev/null
+killall pgp &>/dev/null
+
+rm -f $LOCAL/active
+rm -f $LOCAL/preaccess
+rm -f $LOCAL/connectedip
+rm -f $LOCAL/calledip
+rm -f $LOCAL/nomute
+rm -f $LOCAL/monitor_only
+
+rm -f $RUN/*
+
+touch $LOCAL/timeout

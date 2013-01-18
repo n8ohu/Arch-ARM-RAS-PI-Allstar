@@ -1,0 +1,47 @@
+CC=gcc
+HOSTCC=gcc
+CFLAGS=-g -O2
+LDFLAGS=
+
+INSTALL=/usr/bin/install -c
+GREP=/usr/bin/grep
+SHELL=/bin/sh
+LN=/usr/bin/ln
+
+prefix = /usr
+exec_prefix = ${prefix}
+
+bindir = ${exec_prefix}/bin
+datarootdir = ${prefix}/share
+datadir = ${datarootdir}
+includedir = ${prefix}/include
+infodir = ${datarootdir}/info
+libdir = ${exec_prefix}/lib
+libexecdir = ${exec_prefix}/libexec
+localstatedir = /var
+mandir = ${datarootdir}/man
+sbindir = ${exec_prefix}/sbin
+sharedstatedir = ${prefix}/com
+sysconfdir = /etc
+
+DOWNLOAD=/usr/bin/wget
+
+PBX_LIBNEWT=1
+NEWT_LIB=-lnewt 
+NEWT_INCLUDE=
+
+CURSES_LIB=-lcurses 
+CURSES_INCLUDE=
+
+NCURSES_LIB=-lncurses 
+NCURSES_INCLUDE=
+
+PBX_LIBUSB=1
+USB_LIB=-lusb 
+USB_INCLUDE=
+
+USE_SELINUX=no
+
+PPPD_VERSION=2.4.5
+
+ASCIIDOC=asciidoc

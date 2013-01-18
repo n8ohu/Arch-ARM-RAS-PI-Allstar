@@ -1,0 +1,10 @@
+#!/bin/bash
+#=======================================================================
+# filename:	process_check
+# description:	Gets called hourly to make sure that the IRLP
+#		process (irlpd) is still running.
+#=======================================================================
+[ -z "$SCRIPT" ] && SCRIPT=/home/irlp/scripts
+source ${SCRIPT}/common-functions.sh
+
+${BIN}/mynetd 15425 ${BIN}/irlpd &>/dev/null

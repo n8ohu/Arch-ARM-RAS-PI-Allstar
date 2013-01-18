@@ -1,0 +1,9 @@
+#
+# IRLP Crons
+# These scripts are run by the user repeater's crontab
+#
+0 * * * * (/bin/bash -c "/home/irlp/scripts/process_check &>/dev/null &")
+0 3 * * * (/bin/bash -c "/home/irlp/scripts/update_files_cron &> /dev/null &")
+*/15 * * * * (/bin/bash -c "/home/irlp/scripts/ipupdate_cron &>/dev/null &")
+*/20 * * * * (/bin/bash -c "/home/irlp/scripts/statupdate_cron &>/dev/null &")
+0 0 * * 1 (/bin/bash -c "/home/irlp/scripts/rotatelog  &>/dev/null")

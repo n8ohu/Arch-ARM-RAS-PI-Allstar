@@ -1,0 +1,166 @@
+#!/bin/bash
+#=======================================================================
+# filename:	call
+# description:	This script is called to initiate all call to a remote
+#		Node. Reflector are called using a different script.
+#=======================================================================
+[ -z "$SCRIPT" ] && SCRIPT=/home/irlp/scripts
+source $SCRIPT/common-functions.sh
+
+# NOTE: This does not apply to irlp_chan (Limey_Linux)
+#Checks to make sure that the audio devices are readable by the repeater user
+#if [ ! -w /dev/audio -o ! -w /dev/mixer -o ! -w /dev/dsp ] ; then
+#  echo AUDIO DEVICES NOT SET CORRECT
+#  $SCRIPT/failure audiodev
+#  $SCRIPT/disable
+#  exit 1
+#fi
+
+if [ "$#" = "0" ] ; then
+  echo "Syntax: call STATIONID [notimeout]"
+  exit 1
+fi
+
+if [ "${#1}" -lt "7" ] ; then 
+  echo "This version of call only supports 4-digit dialing. Please use a 4 digit node number"
+  exit 1
+fi
+
+# If node is not enabled...
+if [ ! -f $LOCAL/enable ] ; then
+  echo "Node is not Enabled."
+  exit 1
+fi
+
+# Line for people who call themselves
+if [ "$1" = "$CONVERTED_STATIONID" ]; then
+  echo "You can not call yourself!"
+  exit 1
+fi
+
+#Checks to see if the node is on your lockout list
+if [ -f $CUSTOM/lockout_list ] ; then
+  if (grep "$1" $CUSTOM/lockout_list >/dev/null 2>&1) ; then
+    echo "Node $1 is in your lockout list"
+    log "Call attempted to LOCKED-OUT node $1"
+#    $SCRIPT/wavplay lockout_local
+    $SCRIPT/irlp_reset
+    exit 1
+  fi
+fi
+
+if [ -f $LOCAL/active ]; then
+  CONNECTED="`cat $LOCAL/active`"
+  echo "Your node is currently connected to $CONNECTED"
+  set_node_digits $CONNECTED NUM1 NUM2 NUM3 NUM4
+  
+  if echo $CONNECTED | grep "ref" >/dev/null ; then
+    IDFILE="reflector $NUM1 $NUM2 $NUM3 $NUM4"
+  else
+    IDFILE="nodenum $NUM1 $NUM2 $NUM3 $NUM4"
+  fi
+  $SCRIPT/wavplay connected $IDFILE
+  exit 0
+fi
+
+set_node_digits $1 NUM1 NUM2 NUM3 NUM4
+
+#LOGS the call
+log "IRLP call initiated to $1"
+#END LOGGING
+
+if [ ! -f $LOCAL/timeout ] ; then
+  echo "Timeout is disabled"
+  NOTIMEOUT=notimeout
+fi 
+
+if [ "$2" = "notimeout" ] ; then
+  echo Timeout is disabled
+  rm -f $LOCAL/timeout
+  NOTIMEOUT=notimeout
+fi
+
+if [ ! -p $FIFO ] ; then
+        rm -f $FIFO  
+        mkfifo $FIFO
+fi
+
+# Starts IRLP_CALL to the other station....
+
+# Get the IP from the central servers lists
+if [ -f $LOCAL/serverip ] ; then
+  export SERVERIP="`cat $LOCAL/serverip`"
+else
+  echo -n "Obtaining best server IP ... "
+  SERVERIP="`$SCRIPT/find_best_server`"
+  echo "found IP = $SERVERIP"
+fi
+
+SERVER_REMOTEIP=`echo $1 | $NETCAT -w2 $SERVERIP 15428`
+
+if [ "$SERVER_REMOTEIP" = "NOEXIST" ] ; then
+  echo "The node you entered does not have an IP on the servers."
+  $SCRIPT/failure noexist
+  exit 1
+fi
+
+if [ "$SERVER_REMOTEIP" = "" ] ; then
+  echo "The server did not respond, trying again."
+  SERVERIP="`$SCRIPT/find_best_server`"
+  SERVER_REMOTEIP="`echo $1 | $NETCAT -w2 $SERVERIP 15428`"
+  if [ "$SERVER_REMOTEIP" = "" ] ; then
+    echo "The server did not respond on second try, resorting to hosts file."
+    NOSERVERIP="1"
+  fi
+fi
+
+if [ "$NOSERVERIP" = "1" ] ; then 
+  echo "No IP was obtained from server, resorting to hosts file"
+else
+  echo "Valid IP = $SERVER_REMOTEIP obtained from server"
+fi
+
+
+if [ "$NUM4" = "0" ] ; then
+  STATION_KEYID="${1%*?}"
+else
+  STATION_KEYID="$1"
+fi
+
+echo "KEYID"="$STATION_KEYID"
+
+if ($BIN/pgp -kv $STATION_KEYID 2>/dev/null | grep 512 | grep $STATION_KEYID >/dev/null 2>&1) ; then
+  echo "Key exists in the keyring"
+  VALID_KEY="1"
+else
+  echo "Key does not exist in the keyring"
+  VALID_KEY="0"
+  $SCRIPT/update keyring >/dev/null 2>&1 &
+  $SCRIPT/failure nopgpkey
+  exit 1
+fi
+
+HOSTS_REMOTEIP="`cat $LOCAL/hosts | grep $1 | cut -d' ' -f1`"
+
+if [ "$SERVER_REMOTEIP" = "" -a "$HOSTS_REMOTEIP" = "" ] ; then
+  echo "The node you entered does not have an IP on the servers or hosts file."
+  $SCRIPT/failure noexist
+  exit 1
+fi
+
+if [ "$HOSTS_REMOTEIP" = "$SERVER_REMOTEIP" ] ; then
+  echo "$SERVER_REMOTEIP" > $LOCAL/calledip
+else
+  echo "Hosts file must be stale, downloading a new one in the background."
+  $SCRIPT/update hosts >/dev/null 2>&1 &
+  if [ "$NOSERVERIP" = "1" ] ; then
+    SERVER_REMOTEIP="$HOSTS_REMOTEIP"
+  fi
+  echo "$SERVER_REMOTEIP" > $LOCAL/calledip
+fi
+
+echo "The nodes IP is determined to be `cat $LOCAL/calledip`"
+
+if $BIN/irlp_call "$SERVER_REMOTEIP" "$IRLP_PORT" "${1#???}"; then
+	$SCRIPT/fifoecho "$STATIONID connect $DEFAULTCODEC $NOTIMEOUT"
+fi

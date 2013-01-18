@@ -1,0 +1,261 @@
+#!/bin/bash
+
+[ -z "$SCRIPT" ] && SCRIPT=/home/irlp/scripts
+source $SCRIPT/common-functions.sh
+
+if [ "$#" = "0" ] ; then
+  echo "Syntax: connect_to_reflector REFLECTORID"
+  exit 1
+fi
+
+# Exits if node is not enabled
+if [ ! -f $LOCAL/enable ] ; then 
+  echo The node is not enabled
+  exit 0
+fi
+
+#Checks to see if the node is on your lockout list
+if [ -f $CUSTOM/lockout_list ] ; then
+  if (grep "$1" $CUSTOM/lockout_list >/dev/null 2>&1) ; then
+    log "Call attempted to LOCKED-OUT reflector $1"
+    $SCRIPT/wavplay lockout_local
+    $SCRIPT/irlp_reset
+    exit 1
+  fi
+  if (grep ALLREF $CUSTOM/lockout_list >/dev/null 2>&1) ; then
+    log "Call attempted to LOCKED-OUT reflector $1"
+    $SCRIPT/wavplay lockout_local
+    $SCRIPT/irlp_reset
+    exit 1
+  fi
+fi
+
+if [ -f $LOCAL/active ]; then
+  CONNECTED="`cat $LOCAL/active`"
+  echo "Your node is currently connected to $CONNECTED"
+  set_node_digits $CONNECTED NUM1 NUM2 NUM3 NUM4
+  if echo $CONNECTED | grep "ref" >/dev/null ; then
+    IDFILE="reflector $NUM1 $NUM2 $NUM3 $NUM4"
+  else
+    IDFILE="nodenum $NUM1 $NUM2 $NUM3 $NUM4"
+  fi
+  $SCRIPT/wavplay connected $IDFILE
+  exit 0
+fi
+
+#Here is where we parse the dialed reflector number to determine the base
+#reflector number, the channel number, and its respective codec
+
+BASE_REFLECTOR="${1%?}0"
+CHANNEL="${1#ref???}"
+
+#echo "BASE_REFLECTOR=$BASE_REFLECTOR"
+
+if [ "$BASE_REFLECTOR" != "ref9990" ] ; then
+  # Call is NOT to the echo reflector, where we accept all CODECs. 
+  # We parse the x-ref file for codec.
+  let CHANNEL+=1
+  CHANNEL_CODEC="`cat $SCRIPT/ref-x-reference | grep $BASE_REFLECTOR | cut -d':' -f2 | cut -d" " -f$CHANNEL`"
+  REF_VERSION="`cat $SCRIPT/ref-x-reference | grep $BASE_REFLECTOR | cut -d'v' -f2`"
+  let CHANNEL-=1
+
+  if [ -z "$CHANNEL_CODEC" ] ; then
+    echo "The channel you have entered (or the reflector itself) does not exist."
+    $SCRIPT/failure noexist
+    exit 1
+  fi
+
+  # Dumps the call due to lack of proper CODEC setup
+  if [ "$DEFAULTCODEC" = "GSM" -o "$DEFAULTCODEC" = "GSM_FD" ] && [ "$CHANNEL_CODEC" = "A" -o "$CHANNEL_CODEC" = "U" ] ; then
+    echo "Your system is set for GSM calls only (due to dialup modem connection)."
+    echo "The reflector/channel you chose only allows ADPCM connections."
+    $SCRIPT/wavplay lockout_local
+    $SCRIPT/irlp_reset
+    exit 1
+  fi
+else
+  # Call is to the echo reflector
+  BASE_REFLECTOR="echo"
+fi
+
+if [ "$CHANNEL_CODEC" = "G" ] ; then
+  echo "CODEC chosen as GSM for channel $CHANNEL."
+elif [ "$CHANNEL_CODEC" = "U" ] ; then
+  echo "CODEC chosen as UNCOMP for channel $CHANNEL."
+else
+  echo "CODEC chosen as ADPCM for channel $CHANNEL."
+fi
+
+# Get the IP from the central servers lists
+if [ -f $LOCAL/serverip ] ; then
+  export SERVERIP="`cat $LOCAL/serverip`"
+else
+  echo -n "Obtaining best server IP ... "
+  SERVERIP="`$SCRIPT/find_best_server`"
+  echo "found IP = $SERVERIP"
+fi
+
+SERVER_REFLECTIP="`echo $BASE_REFLECTOR | $NETCAT -w2 $SERVERIP 15428`"
+
+if [ "$SERVER_REFLECTIP" = "NOEXIST" ] ; then
+  echo "The reflector you entered does not have an IP on the servers."
+  $SCRIPT/failure noexist
+  exit 1
+fi
+
+if [ "$SERVER_REFLECTIP" = "" ] ; then
+  echo "The server did not respond, trying to find another."
+  SERVERIP="`$SCRIPT/find_best_server`"
+  SERVER_REFLECTIP="`echo $BASE_REFLECTOR | $NETCAT -w2 $SERVERIP 15428`"
+  if [ "$SERVER_REFLECTIP" = "" ] ; then
+    echo "The server did not respond on second try, resorting to hosts file."
+    NOSERVERIP="1"
+  fi
+fi
+
+if [ "$NOSERVERIP" = "1" ] ; then
+  echo "No IP was obtained from server, resorting to hosts file"
+else
+  echo "Valid IP = $SERVER_REFLECTIP obtained from server"
+fi
+
+HOSTS_REFLECTIP="`cat $LOCAL/hosts | grep $BASE_REFLECTOR | cut -d" " -f1`"
+
+if [ "$SERVER_REFLECTIP" = "" -a "$HOSTS_REFLECTIP" = "" ] ; then
+  echo "The node you enetered does not have an IP on the servers or hosts file."
+  $SCRIPT/failure noexist
+  exit 1
+fi
+
+if [ "$HOSTS_REFLECTIP" = "$SERVER_REFLECTIP" ] ; then
+  echo "$SERVER_REFLECTIP" > $LOCAL/calledip
+else
+  echo "Hosts file must be stale, downloading a new one in the background."
+  $SCRIPT/update hosts >/dev/null 2>&1 &
+  if [ "$NOSERVERIP" = "1" ] ; then
+    SERVER_REFLECTIP="$HOSTS_REFLECTIP"
+  fi
+  echo "$SERVER_REFLECTIP" > $LOCAL/calledip
+fi
+
+echo "The reflector IP is determined to be `cat $LOCAL/calledip`"
+
+# Contacts the reflector and determines if it is there, and
+# determines if you are in the lockout list. (no lockouts on the echo reflector)
+
+if [ "$BASE_REFLECTOR" != "echo" ] ; then
+
+  # Try TCP pinging the reflector with one small ping first.
+
+  if ! ( $NETCAT -n -z -w5 "$SERVER_REFLECTIP" 15425 > /dev/null 2>&1 ); then
+    echo "The reflector $BASE_REFLECTOR at IP=$SERVER_REFLECTIP is not responding"
+    log "Reflector '$BASE_REFLECTOR' not responding"
+    $SCRIPT/wavplay norespond
+    $SCRIPT/irlp_reset
+    exit 1
+  fi
+
+  # IF we make it this far, we check the lockout list for our station number...
+  # IF we are there, we exit with lockout message.
+
+  # Added new channel specific reflector code. We download the lockout list from the 
+  # reflector, and then parse through it.
+
+  if [ "$REF_VERSION" = "2" ] ; then
+    echo lockouts $CHANNEL | $NETCAT -n -w2 "$SERVER_REFLECTIP" 15425 > $RUN/ref_lockouts
+  else
+    echo lockouts | $NETCAT -n -w2 "$SERVER_REFLECTIP" 15425 > $RUN/ref_lockouts
+  fi
+
+  if (cat $RUN/ref_lockouts | grep "version2" > /dev/null 2>&1 ) ; then
+    REF_VERSION=2
+    echo lockouts $CHANNEL | $NETCAT -n -w2 "$SERVER_REFLECTIP" 15425 > $RUN/ref_lockouts
+  fi
+
+  if (cat $RUN/ref_lockouts | grep "$CONVERTED_STATIONID" > /dev/null 2>&1 ) ; then
+    echo "Reflector $BASE_REFLECTOR is stating you are locked out"
+    log "Reflector '$BASE_REFLECTOR' is stating you are locked out"
+    $SCRIPT/wavplay lockout_remote
+    $SCRIPT/irlp_reset
+    exit 1
+  fi
+
+  # Performs the Authentication to the reflector for version 2 reflectors
+  # If the auth fails, we dump the call, and produce an error.
+
+  if [ "$REF_VERSION" = "2" ] ; then
+    if ! ($BIN/irlp_ref_auth_client "${1#???}" $SERVER_REFLECTIP) ; then
+#      $SCRIPT/irlp_reset
+      exit 1
+    fi
+  fi
+
+fi
+
+if [ -n "$REFLECT_TIMEOUT_VALUE" -a "$REFLECT_TIMEOUT_VALUE" != "0" ] ; then
+  cp -f $CUSTOM/timeoutvalue $CUSTOM/timeoutvalue.temp > /dev/null 2>&1
+  echo "$REFLECT_TIMEOUT_VALUE" > $CUSTOM/timeoutvalue
+else
+  rm -f $LOCAL/timeout
+fi
+
+if [ "$2" = "notimeout" ] ; then
+  rm -f $LOCAL/timeout
+fi
+
+# LOGS the Connect to reflector
+echo "Node Connected to reflector $BASE_REFLECTOR on channel $CHANNEL"
+log "Node Connected to reflector $BASE_REFLECTOR on channel $CHANNEL"
+# END LOGGING
+
+echo "$1" > $LOCAL/active
+
+if [ -x $CUSTOM/custom_on ] ; then
+    $CUSTOM/custom_on "$1" "$2"
+fi
+
+# Plays ON Identifier
+# If the individual on wave file exists, it is played. If not it
+# takes the base number wave file and adds the channel onto it.
+# If neither exist, it plays a generic "nodenum 9 2 3 4 linkon"
+
+if [ "$BASE_REFLECTOR" = "echo" ] ; then
+  IDFILE=echoon
+else    
+  set_node_digits $BASE_REFLECTOR NUM1 NUM2 NUM3 NUM4
+  IDFILE="reflector $NUM1 $NUM2 $NUM3 $CHANNEL linkon"
+fi
+
+# Added for support of add-on wave files, specific to a node.
+[ -f $AUDIO/${BASE_REFLECTOR}add.wav ] && IDFILE="$IDFILE ${BASE_REFLECTOR}add"
+
+$SCRIPT/wavplay $IDFILE
+
+# Determines the port pair based on the CHANNEL number
+BASE_PORT=2074
+PORT_ADD="`expr $CHANNEL \* 2`"
+UDP_PORT="`expr $BASE_PORT + $PORT_ADD`"
+echo "$UDP_PORT" > $LOCAL/udp_port
+
+#CODEC determination conversion
+
+if [ "$BASE_REFLECTOR" != "echo" ] ; then
+  if [ "$CHANNEL_CODEC" = "U" ] ; then
+    echo "UNCOMP" > $LOCAL/codec
+  elif [ "$CHANNEL_CODEC" = "A" ] ; then
+    echo "ADPCM" > $LOCAL/codec
+  else
+    echo "GSM" > $LOCAL/codec
+  fi
+else
+  if [ "$DEFAULTCODEC" = "UNCOMP" -o "$DEFAULTCODEC" = "UNCOMP_FD" ] ; then
+    echo "UNCOMP" > $LOCAL/codec
+  elif [ "$DEFAULTCODEC" = "ADPCM" -o "$DEFAULTCODEC" = "ADPCM_FD" ] ; then
+    echo "ADPCM" > $LOCAL/codec
+  else
+    echo "GSM" > $LOCAL/codec
+  fi
+fi
+
+$SCRIPT/statupdate &
+$SCRIPT/incrementcount &

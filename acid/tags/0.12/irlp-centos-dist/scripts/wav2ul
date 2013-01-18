@@ -1,0 +1,29 @@
+#!/bin/bash
+# Make sure we are user repeater!!!
+if [ `/usr/bin/whoami` != "repeater" ] ; then
+  echo This program must be run as user REPEATER!
+  exit 1
+fi
+
+# Make sure IRLP environment is loaded
+if [ "$RUN_ENV" != "TRUE" ] ; then
+  echo -n "Loading IRLP environment..."
+  . /home/irlp/custom/environment
+  echo "DONE"
+  exit 1
+fi
+
+#Converts audio to nice congruent audio, without gaps, if there is more
+#than one argument in the script.
+
+if [ -f /home/irlp/bin/sox ] ; then
+  for src in ${AUDIO}/custom/S69/*.wav ; do
+    filename=${src##*/}
+    if [ ${filename:0:3} != "stn" ] && [ ${filename:0:3} != "ref" ] ; then
+      /home/irlp/bin/sox ${AUDIO}/custom/S69/${filename} ${AUDIO}/custom/S69/${filename%%.*}.ul
+    fi
+  done
+else
+  echo "File not found: /home/irlp/bin/sox"
+fi
+exit 0

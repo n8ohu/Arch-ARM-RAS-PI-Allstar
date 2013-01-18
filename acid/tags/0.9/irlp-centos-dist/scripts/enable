@@ -1,0 +1,14 @@
+#!/bin/bash
+
+[ -z "$SCRIPT" ] && SCRIPT=/home/irlp/scripts
+source $SCRIPT/common-functions.sh
+
+if [ -f $LOCAL/enable ] ; then exit 0 ; fi
+if [ -f $LOCAL/active ] ; then exit 0 ; fi
+
+#LOGS the enable
+log "Node Enabled"
+
+echo "Enabling node."
+touch $LOCAL/enable
+$SCRIPT/statupdate &

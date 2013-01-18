@@ -1,0 +1,156 @@
+#!/bin/bash
+
+[ -z "$SCRIPT" ] && SCRIPT=/home/irlp/scripts
+source ${SCRIPT}/common-functions.sh
+
+if [ "$#" = "0" ] ; then exit 0 ; fi
+
+# Added for compatibilty with 4 digit node numbering
+# Changes old nodeIDs to the new standard
+if (echo $1 | grep "stn" &>/dev/null) ; then
+  if [ ${#1} = "6" ] ; then
+    CALLINGID="${1}0"
+  else
+    CALLINGID="$1"
+  fi
+fi
+
+
+# FAILURE SCRIPT HANDLES ALL POSSIBLE FAILURES
+if [ "$1" = "failure" ] ; then
+    ${SCRIPT}/failure "$2" "$3" "$4" "$5"
+    exit 0
+fi
+# END FAILURE
+
+# LOGS ALL COMMANDS THAT AREN'T ECHOS, TIMESTAMPS
+if [ "$1" != "echo" -o "$2" != "timestamp" ] ; then
+  log "$@"
+fi
+# END LOGGING
+
+# SENDS ALL ECHOS BACK TO THE FIFO AND ON TO THE 'REMOTE' CONTROL SCRIPT
+if [ "$1" = "echo" ] ; then
+  "$@" > $FIFO
+  exit 0
+fi
+# END FIFO ECHO
+
+# IF THE LINE is for REGENERATION of DTMF
+if [ "$2" = "dtmfregen" ] ; then
+   echo $3 > /home/irlp/astrun/dtmf_fifo
+  exit 0
+fi
+
+# IF THE LINE STARTS WITH LOCKOUT...
+if [ "$2" = "lockout" ] ; then
+  ${SCRIPT}/wavplay lockout_remote
+  log "Call attempted to node $CALLINGID returned  LOCKED-OUT"
+  ${SCRIPT}/dropcall
+  exit 0
+fi
+
+# IF THE LINE STARTS WITH REPLY...
+# SYNTAX "STATIONID [connectok/rptrinuse] codec (notimeout)"
+if [ "$2" = "reply" ] ; then
+
+  if [ "$3" = "rptrinuse" ]; then
+    ${SCRIPT}/wavplay nodeinuse
+    ${SCRIPT}/dropcall	
+    exit 0
+  fi
+
+  if [ "$3" = "connectok" ]; then
+    REMOTEIP="`/bin/cat ${LOCAL}/calledip`"
+    ${SCRIPT}/on "$CALLINGID" "$4" "$REMOTEIP" "$5"
+  fi
+
+fi
+
+# IF THE LINE STARTS WITH DISCONNECT
+# SYNTAX "disconnect (timeout)"
+
+if [ "$2" = "disconnect" ] ; then
+  ${SCRIPT}/off "$3"
+  ${SCRIPT}/dropcall	
+  exit 0
+fi
+# END DISCONNECT
+
+# IF THE LINE STARTS WITH CONNECT
+# SYNTAX "connect codec (notimeout)"
+# CODECS = GSM, ADPCM, GSM_FD, ADPCM_FD, UNCOMP, UNCOMP_FD
+
+
+ if [ "$2" = "connect" ] ; then
+
+  if [ -f ${CUSTOM}/lockout_list ] ; then
+    if (grep ${CALLINGID} ${CUSTOM}/lockout_list &>/dev/null) ; then
+      log "Call attempted from LOCKED-OUT node ${CALLINGID}"
+      ${SCRIPT}/fifoecho "${STATIONID} lockout"
+      sleep 1
+      ${SCRIPT}/dropcall
+      exit 0
+    fi
+  fi
+
+  if [ -f ${LOCAL}/cos_active ] ; then
+    ${SCRIPT}/fifoecho "${STATIONID}" reply rptrinuse
+    ${SCRIPT}/dropcall
+    exit 0
+  fi
+
+#  if [ "${REPORTBUSY}" = "YES" ] && ! ${BIN}/cosstate; then
+#    ${SCRIPT}/fifoecho "${STATIONID}" reply rptrinuse
+#    ${SCRIPT}/dropcall
+#    exit 0
+#  fi
+
+
+  #CALL CODEC DETERMINATION
+  #added Full Duplex codec choices 2005-Jul-13
+  #added Uncompressed audio choices 2006-Oct-30
+
+  # Case when mine is UNCOMP_FD
+  if [ "$DEFAULTCODEC" = "UNCOMP_FD" -a "$3" = "UNCOMP_FD" ] ; then CODEC="UNCOMP_FD" ; fi
+  if [ "$DEFAULTCODEC" = "UNCOMP_FD" -a "$3" = "UNCOMP" ] ; then CODEC="UNCOMP" ; fi
+  if [ "$DEFAULTCODEC" = "UNCOMP_FD" -a "$3" = "ADPCM_FD" ] ; then CODEC="ADPCM_FD" ; fi
+  if [ "$DEFAULTCODEC" = "UNCOMP_FD" -a "$3" = "ADPCM" ] ; then CODEC="ADPCM" ; fi
+  if [ "$DEFAULTCODEC" = "UNCOMP_FD" -a "$3" = "GSM_FD" ] ; then CODEC="GSM_FD" ; fi
+  if [ "$DEFAULTCODEC" = "UNCOMP_FD" -a "$3" = "GSM" ] ; then CODEC="GSM" ; fi
+  # Case when mine is UNCOMP
+  if [ "$DEFAULTCODEC" = "UNCOMP" -a "$3" = "UNCOMP_FD" ] ; then CODEC="UNCOMP" ; fi
+  if [ "$DEFAULTCODEC" = "UNCOMP" -a "$3" = "UNCOMP" ] ; then CODEC="UNCOMP" ; fi
+  if [ "$DEFAULTCODEC" = "UNCOMP" -a "$3" = "ADPCM_FD" ] ; then CODEC="ADPCM" ; fi
+  if [ "$DEFAULTCODEC" = "UNCOMP" -a "$3" = "ADPCM" ] ; then CODEC="ADPCM" ; fi
+  if [ "$DEFAULTCODEC" = "UNCOMP" -a "$3" = "GSM_FD" ] ; then CODEC="GSM" ; fi
+  if [ "$DEFAULTCODEC" = "UNCOMP" -a "$3" = "GSM" ] ; then CODEC="GSM" ; fi
+  # Case when mine is ADPCM_FD
+  if [ "$DEFAULTCODEC" = "ADPCM_FD" -a "$3" = "UNCOMP_FD" ] ; then CODEC="ADPCM_FD" ; fi
+  if [ "$DEFAULTCODEC" = "ADPCM_FD" -a "$3" = "UNCOMP" ] ; then CODEC="ADPCM" ; fi
+  if [ "$DEFAULTCODEC" = "ADPCM_FD" -a "$3" = "ADPCM_FD" ] ; then CODEC="ADPCM_FD" ; fi
+  if [ "$DEFAULTCODEC" = "ADPCM_FD" -a "$3" = "ADPCM" ] ; then CODEC="ADPCM" ; fi
+  if [ "$DEFAULTCODEC" = "ADPCM_FD" -a "$3" = "GSM_FD" ] ; then CODEC="GSM_FD" ; fi
+  if [ "$DEFAULTCODEC" = "ADPCM_FD" -a "$3" = "GSM" ] ; then CODEC="GSM" ; fi
+  # Case when mine is ADPCM
+  if [ "$DEFAULTCODEC" = "ADPCM" -a "$3" = "UNCOMP_FD" ] ; then CODEC="ADPCM" ; fi
+  if [ "$DEFAULTCODEC" = "ADPCM" -a "$3" = "UNCOMP" ] ; then CODEC="ADPCM" ; fi
+  if [ "$DEFAULTCODEC" = "ADPCM" -a "$3" = "ADPCM_FD" ] ; then CODEC="ADPCM" ; fi
+  if [ "$DEFAULTCODEC" = "ADPCM" -a "$3" = "ADPCM" ] ; then CODEC="ADPCM" ; fi
+  if [ "$DEFAULTCODEC" = "ADPCM" -a "$3" = "GSM_FD" ] ; then CODEC="GSM" ; fi
+  if [ "$DEFAULTCODEC" = "ADPCM" -a "$3" = "GSM" ] ; then CODEC="GSM" ; fi
+  # Case when mine is GSM_FD
+  if [ "$DEFAULTCODEC" = "GSM_FD" -a "$3" = "UNCOMP_FD" ] ; then CODEC="GSM_FD" ; fi
+  if [ "$DEFAULTCODEC" = "GSM_FD" -a "$3" = "UNCOMP" ] ; then CODEC="GSM" ; fi
+  if [ "$DEFAULTCODEC" = "GSM_FD" -a "$3" = "ADPCM_FD" ] ; then CODEC="GSM_FD" ; fi
+  if [ "$DEFAULTCODEC" = "GSM_FD" -a "$3" = "ADPCM" ] ; then CODEC="GSM" ; fi
+  if [ "$DEFAULTCODEC" = "GSM_FD" -a "$3" = "GSM_FD" ] ; then CODEC="GSM_FD" ; fi
+  if [ "$DEFAULTCODEC" = "GSM_FD" -a "$3" = "GSM" ] ; then CODEC="GSM" ; fi
+  # Case when mine is GSM
+  if [ "$DEFAULTCODEC" = "GSM" ] ; then CODEC="GSM" ; fi
+
+  REMOTEIP="`/bin/cat ${LOCAL}/connectedip`"
+  ${SCRIPT}/fifoecho "${STATIONID}" reply connectok "${CODEC}" "$4"
+  ${SCRIPT}/on "${CALLINGID}" "${CODEC}" "${REMOTEIP}" "$4"
+fi
+exit 0

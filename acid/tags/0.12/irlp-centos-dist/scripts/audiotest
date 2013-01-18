@@ -1,0 +1,12 @@
+#!/bin/bash
+#=======================================================================
+# filename:	audiotest
+# description:	Play the "standard" IRLP audio test .wav file
+# NOTE:		May not be apropos with chan_irlp but it is here for
+#		posterity.
+#=======================================================================
+[ -z "$SCRIPT" ] && SCRIPT=/home/irlp/scripts
+source $SCRIPT/common-functions.sh
+
+$SCRIPT/wavplay audiotest
+exit 0

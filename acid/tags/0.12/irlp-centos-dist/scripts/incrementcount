@@ -1,0 +1,20 @@
+#!/bin/bash
+
+# This script is used to increment a call counter used for IRLP calls.
+
+[ -z "$SCRIPT" ] && SCRIPT=/home/irlp/scripts
+source $SCRIPT/common-functions.sh
+
+if [ ! -f $CUSTOM/callcounter ] ; then
+  echo "$CUSTOM/callcounter file does not exist - creating..."
+  echo 0 > $CUSTOM/callcounter
+fi
+
+if [ ! -w $CUSTOM/callcounter ] ; then
+  echo "ERROR - User repeater can not write to the file $CUSTOM/callcounter"
+  exit 0
+fi
+
+COUNT=`cat $CUSTOM/callcounter`
+let COUNT+=1
+echo "$COUNT" > $CUSTOM/callcounter

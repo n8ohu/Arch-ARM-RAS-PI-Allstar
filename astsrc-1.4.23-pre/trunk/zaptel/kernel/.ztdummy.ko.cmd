@@ -1,0 +1,1 @@
+cmd_/usr/local/src/allstar/astsrc-1.4.23-pre/trunk/zaptel/kernel/ztdummy.ko := ld -EL -r  -T /usr/src/linux-3.2.27-18-ARCH+/scripts/module-common.lds --build-id  -o /usr/local/src/allstar/astsrc-1.4.23-pre/trunk/zaptel/kernel/ztdummy.ko /usr/local/src/allstar/astsrc-1.4.23-pre/trunk/zaptel/kernel/ztdummy.o /usr/local/src/allstar/astsrc-1.4.23-pre/trunk/zaptel/kernel/ztdummy.mod.o

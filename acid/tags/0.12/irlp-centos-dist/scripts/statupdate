@@ -1,0 +1,95 @@
+#!/bin/bash
+########################################################################
+# filename:	statupdate
+#
+# description:	Reports the node status to the IRLP status database.
+#
+# history:
+# 20011210	original on my system
+# 20020226	kc6hur	Major modifications!
+#			1. Cleaned up I/O redirection syntax in commands
+#			2. When checking setting of IRLP environment,
+#			   configure the environment, don't just complain
+#			   and quit, set it. Also, don't just blindly
+#			   set the IRLP environment.
+#			3. Record the process ID of the lynx process 
+#			   being used to perform the status update
+#			   and kill only that copy of lynx at a later 
+#			   time, rather than blindly killing all copies 
+#			   of lynx that may be running.
+#			4. Fixed Node Status detection so that it is 
+#			   more robust and properly follows the settings
+#			   of the "enable" and "active" flags.
+# 20020301	kc6hur	Fixed setting of TERM env var so that it is safe
+#			to run this script manually.
+# 20031113	VE7LTD	Changed all lynx commands to wget commands
+#			Removed LYNX from all uses
+# 20060228	VE7LTD	Changed the wget to use locally installed version
+#			due to conflict with the wgetrc file and added
+#			EchoIRLP name ID and status level 3
+# 20081102	kc6hur	Back to using OS supplies wget (for Limey-Linux)
+########################################################################
+
+[ -z "$SCRIPT" ] && SCRIPT=/home/irlp/scripts
+source ${SCRIPT}/common-functions.sh
+
+# Kill off any old stalled statupdate wgets
+if [ -f ${LOCAL}/statupd_PID ] ; then
+  kill `cat ${LOCAL}/statupd_PID` &>/dev/null
+fi
+
+# Figure out the node status
+if [ ! -f ${CUSTOM}/callcounter ] ; then
+  echo "${CUSTOM}/callcounter file does not exist - creating..."
+  echo 0 > ${CUSTOM}/callcounter
+fi
+
+CALLID="`cat ${CUSTOM}/callcounter`"
+NODEID="`echo ${CONVERTED_STATIONID} | cut -c4-`"
+
+#URL="http://66.109.223.70/IRLPsysupdate.php?nodeid=$NODEID"
+URL="http://status-update.irlp.net/IRLPsysupdate.php?nodeid=${NODEID}"
+
+if [ ! -f ${LOCAL}/enable ]; then                     # Node is DISABLED
+   URL="${URL}&status=0"
+elif [ ! -f ${LOCAL}/active ]; then                   # Node is IDLE
+   URL="${URL}&status=1&seq=${CALLID}"
+elif (grep ref ${LOCAL}/active >/dev/null 2>&1); then # Node is connected to
+                                                      # reflector IN-USE
+   # Strips off the ref
+   OTHERNODE="`cat ${LOCAL}/active | cut -c4-`"
+
+   # Strips off the last digit
+   WITHOUT_CHANNEL="${OTHERNODE%?}"
+
+   #Determines the channel based on the port pair
+   if [ -f ${LOCAL}/udp_port ] ; then
+     UDP_PORT="`cat ${LOCAL}/udp_port`"
+     BASE_PORT=2074
+     PORT_ADD="`expr ${UDP_PORT} - ${BASE_PORT}`"
+     CHANNEL="`expr ${PORT_ADD} / 2`"
+   else
+     CHANNEL=0
+   fi
+   URL="${URL}&status=2&node=${WITHOUT_CHANNEL}${CHANNEL}&seq=${CALLID}"
+
+## Added for EchoIRLP support by Dave Cameron Feb28, 2006
+elif [ "`cat ${LOCAL}/active`" = "$CONVERTED_STATIONID" ] ; then
+
+#   OTHERNODE=$NODEID
+   OTHERNODE=`cat ${LOCAL}/echo_call`
+   URL="${URL}&status=3&node=${OTHERNODE}&seq=${CALLID}"
+
+else # Node is connected to another node
+   OTHERNODE="`cat ${LOCAL}/active | cut -c4-`"
+   URL="${URL}&status=2&node=${OTHERNODE}&seq=${CALLID}"
+fi
+
+# Send the status to status.irlp.net
+# REMOVED the $BIN, so uses locally installed wget
+wget -t 1 -q -O /dev/null "${URL}&u=irlp:test1ng" &
+
+# Record the wget process ID
+echo $! > ${LOCAL}/statupd_PID
+
+exit 

@@ -1,0 +1,46 @@
+#!/bin/bash
+
+[ -z "$SCRIPT" ] && SCRIPT=/home/irlp/scripts
+source $SCRIPT/common-functions.sh
+
+if [ -f $LOCAL/active ] ; then
+  log "on_to_remote: ERROR - node already connected"
+  exit 1
+fi
+
+#Checks to make sure there are arguments.
+if [ "$#" = "0" ] ; then 
+  echo "Syntax: on_to_remote IP_address codec <notimeout>"
+  exit 1
+fi
+
+log "on_to_remote calling $1 using $2"
+
+# Puts the local stationid into the "active" file in $LOCAL
+echo remote > $LOCAL/active
+
+if [ "$3" = "notimeout" ] ; then
+  rm -f $LOCAL/timeout
+fi
+
+$SCRIPT/statupdate &
+$SCRIPT/incrementcount &
+
+if [ "$CUSTOM_ON" = "YES" ] ; then
+  if [ -f $CUSTOM/custom_on ] ; then
+    $CUSTOM/custom_on "$1" "$2" "$3"
+  fi
+fi
+
+#Plays ON Identifier
+$SCRIPT/wavplay remote_call_on
+
+#Places current codec into the local file
+echo $2 >$LOCAL/codec
+
+#Removes any possible leftover UDP_PORT switching performed 
+# by the reflector calls.
+rm -f $LOCAL/udp_port
+
+exit 0;
+#End of ON script

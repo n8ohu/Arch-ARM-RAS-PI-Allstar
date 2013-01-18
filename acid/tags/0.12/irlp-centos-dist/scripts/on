@@ -1,0 +1,52 @@
+#!/bin/bash
+
+# Info sent from the control or reply script
+# SYNTAX <on RemoteSTATIONID CODEC RemoteIP (notimeout)>
+
+[ -z "$SCRIPT" ] && SCRIPT=/home/irlp/scripts
+source ${SCRIPT}/common-functions.sh
+
+# Checks to make sure there is a node in the argument
+if [ "$#" = "0" ] ; then exit 1 ; fi
+
+# Puts the calling stationid into the "active" file in $LOCAL
+echo "$1" > ${LOCAL}/active
+
+# Handle notimeout option
+if [ "$4" = "notimeout" ] ; then
+  rm -f ${LOCAL}/timeout
+fi
+
+# Update status page information
+${SCRIPT}/statupdate &
+
+# Increment the call counter
+${SCRIPT}/incrementcount &
+
+# Run the user supplied custom_on script
+if [ "$CUSTOM_ON" = "YES" ] ; then
+  if [ -f ${CUSTOM}/custom_on ] ; then
+    ${CUSTOM}/custom_on "$1" "$2" "$3" "$4"
+  fi
+fi
+
+# Plays Link On Identifier
+set_node_digits $1 NUM1 NUM2 NUM3 NUM4
+IDFILE="nodenum $NUM1 $NUM2 $NUM3 $NUM4 linkon"
+${SCRIPT}/wavplay $IDFILE
+
+# Places current codec into the local file
+echo $2 >${LOCAL}/codec
+
+# Removes any possible leftover UDP_PORT switching performed by the reflector calls.
+rm -f ${LOCAL}/udp_port
+
+# Sets up for full-duplex or simplex
+if [ "$2" = "ADPCM_FD" -o "$2" = "GSM_FD" -o "$2" = "UNCOMP_FD" ] ; then
+  touch $LOCAL/nomute
+else
+  rm -f $LOCAL/nomute
+fi
+
+#End of ON script
+exit 0

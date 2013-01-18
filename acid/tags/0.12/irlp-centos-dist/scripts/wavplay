@@ -1,0 +1,46 @@
+#!/bin/bash
+
+# Plays WAV files 
+# This script can take any number of arguments
+# SYNTAX: playwav file1 <file2 ...>
+# fileN can be .wav or .ul files. DO NOT INCLUDE BASE DIRECTORY OR EXTENSION IN NAME
+# Base audio file directory is $AUDIO (/home/irlp/audio)
+# example: playwav 4 4 9 4 linkon
+
+[ -z "$SCRIPT" ] && SCRIPT=/home/irlp/scripts
+source $SCRIPT/common-functions.sh
+
+if [ "$#" = "0" ] ; then exit 1; fi
+
+# Converts audio to nice congruent audio, without gaps, if there is more
+# than one argument in the script.
+
+RUN=/home/irlp/astrun
+
+mkdir -p $RUN
+
+if [ -f /home/irlp/bin/sox ] ; then
+  while [ -n "$1" ];do
+    if [ ! -f $AUDIO/$1.ul ] ; then 
+      rm -f ${RUN}/temp.ul
+      /home/irlp/bin/sox ${AUDIO}/$1.wav ${RUN}/temp.ul
+      cat ${RUN}/temp.ul >> ${RUN}/wavefile.ul
+    else
+      cat ${AUDIO}/$1.ul >> ${RUN}/wavefile.ul
+    fi
+    shift
+  done
+  mv ${RUN}/wavefile.ul ${RUN}/astplay.pcm
+#  WAVFILES="${RUN}/wavefile.wav"  
+#else
+#  while [ -n "$1" ] ; do
+#    WAVFILES="${WAVFILES} ${AUDIO}/$1.wav"
+#    shift
+#  done
+fi
+
+rm -f ${RUN}/temp.ul
+rm -f ${RUN}/wavefile.ul
+rm -f ${RUN}/wavefile.wav
+
+exit 0

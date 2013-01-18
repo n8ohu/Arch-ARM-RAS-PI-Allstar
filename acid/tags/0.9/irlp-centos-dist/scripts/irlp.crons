@@ -1,0 +1,11 @@
+SHELL=/bin/bash
+TERM=xterm
+BASH_ENV=/home/irlp/.profile
+0 0 1 * * (/home/irlp/scripts/rotatelog > /dev/null 2>&1)
+# NOTE: THERE ARE NO CUSTOM AUDIO FILES ON LIMEY_LINUX SYSTEMS
+#30 3 * * * (/home/irlp/scripts/clean_old_audio > /dev/null 2>&1)
+# NOTE: DO NOT UPDATE FILES USING STANDARD IRLP UPDATES
+0 3 * * * (/home/irlp/scripts/update_files_cron > /dev/null 2>&1)
+0 * * * * (/home/irlp/scripts/process_check > /dev/null 2>&1)
+*/15 * * * * (/home/irlp/scripts/ipupdate_cron > /dev/null 2>&1)
+*/20 * * * * (/home/irlp/scripts/statupdate_cron > /dev/null 2>&1)

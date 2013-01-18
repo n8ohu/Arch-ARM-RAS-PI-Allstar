@@ -1,0 +1,75 @@
+#!/bin/bash
+
+[ -z "$SCRIPT" ] && SCRIPT=/home/irlp/scripts
+source $SCRIPT/common-functions.sh
+
+DEFAULTSERVER=""
+NODE=${CONVERTED_STATIONID#???}
+
+set_node_digits $NODE NUM1 NUM2 NUM3 NUM4
+
+case $NUM1 in
+  1|2)   DEFAULTSERVER="server1" ;;
+  7|8)   DEFAULTSERVER="server2" ;;
+  4|5)   DEFAULTSERVER="server3" ;;
+  6)     DEFAULTSERVER="server4" ;;
+  3)     DEFAULTSERVER="server5" ;;
+  *)     DEFAULTSERVER="server3" ;;
+esac
+
+# Allows user to override the standard server and force starting on
+# a particular server. Just export this in the environment file.
+[ -n "$SERVER_OVERRIDE" ] && DEFAULTSERVER="$SERVER_OVERRIDE"
+
+# The servers listed here MUST be separated by "-" symbols, and are shown
+# the way they are (with the \'s) to simplify the reading on screen.
+# The number of IPs in the list must match the NUM_SERVERS variable.
+
+SERVERS=\
+209.160.72.104-\
+208.67.255.163-\
+206.246.140.250-\
+203.194.18.195-\
+64.72.133.146
+
+NUM_SERVERS=5
+
+LOOPCOUNT=0
+STARTCOUNT=${DEFAULTSERVER#server}
+
+# Added this line in case people have set their default server to 6
+# or 7 before they were both removed.
+if [ $STARTCOUNT -gt $NUM_SERVERS ] ; then STARTCOUNT=1 ; fi
+
+# Even though this would loop forever, all cases have a "break" command.
+while [ TRUE ] ; do
+
+  #This is a roundabout way to find the IP we want to test when playing with
+  #stacked variables. If someone else finds a better way, please let me know
+
+  TEST_IP=`echo $SERVERS | cut -d"-" -f"$STARTCOUNT"`
+
+  if [ "$1" = "debug" ] ; then echo -n "Trying Server No. $STARTCOUNT..." ; fi
+
+  TEST_STRING=`echo stn9999 | $NETCAT -w2 "$TEST_IP" 15428`
+
+  if [ -z $TEST_STRING ] ; then
+    let STARTCOUNT+=1
+    let LOOPCOUNT+=1
+    if [ $LOOPCOUNT -eq 4 ] ; then
+      if [ "$1" = "debug" ] ; then echo -e "failed.\nDefaulting to Server No. 1." ; fi
+      SERVERIP=209.160.72.104
+      break
+    fi
+    if [ $STARTCOUNT -gt $NUM_SERVERS ] ; then STARTCOUNT=1 ; fi
+    if [ "$1" = "debug" ] ; then echo "failed." ; fi
+  else
+    if [ "$1" = "debug" ] ; then echo "responded." ; fi
+    SERVERIP=$TEST_IP
+    break
+  fi
+
+done
+
+echo $SERVERIP
+echo $SERVERIP > $LOCAL/serverip

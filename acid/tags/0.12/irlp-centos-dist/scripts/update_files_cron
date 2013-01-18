@@ -1,0 +1,22 @@
+#!/bin/sh
+#=======================================================================
+# filename:	update_file_cron
+# description:	This script gets called by a cron job, sleeps for a
+#		period of time based on the node number, the calls the
+#		"update files" to update the IRLP files to the lates
+#		versions.
+# NOTE:		Not used on Limey-Linux version since the "update files"
+#		doesn't do anything yet. Maybe in the future, there will
+#		a way to perform file updates on Limey-Linux.
+#=======================================================================
+[ -z "$SCRIPT" ] && SCRIPT=/home/irlp/scripts 
+source $SCRIPT/common-functions.sh
+ 
+STATIONNUM=${CONVERTED_STATIONID#*stn}
+let "NUM=$STATIONNUM % 600"
+[ ! -z "$NUM" ] && sleep "$NUM"
+ 
+/bin/bash $SCRIPT/update files &>/dev/null
+/bin/bash $SCRIPT/update hosts &>/dev/null
+/bin/bash $SCRIPT/update keyring &>/dev/null
+

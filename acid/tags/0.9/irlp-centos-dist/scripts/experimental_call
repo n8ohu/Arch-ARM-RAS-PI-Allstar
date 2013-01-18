@@ -1,0 +1,166 @@
+#!/bin/bash
+
+[ -z "$SCRIPT" ] && SCRIPT=/home/irlp/scripts
+source $SCRIPT/common-functions.sh
+
+# Since Fedora was started, netcat the simple TCP listener/sender
+# requires that the "nc" used is the one from the distro. We have to
+# export the proper netcat to use. We check if it is in the /usr/bin
+# and then set the environment.
+
+if [ -f /usr/bin/nc ] ; then
+  NETCAT=/usr/bin/nc
+elif [ -f /bin/nc ] ; then
+  NETCAT=/bin/nc
+else
+  NETCAT=$BIN/nc
+fi
+
+if [ "$#" = "0" ] ; then
+  echo "Syntax: experimental_call experimental_ID  ex: experimental_call exp0010"
+  exit 1
+fi
+
+# Exits if node is not enabled
+if [ ! -f $LOCAL/enable ] ; then 
+  echo The node is not enabled
+  exit 0
+fi
+
+#Checks to see if the node is on your lockout list
+if [ -f $CUSTOM/lockout_list ] ; then
+  if (grep "$1" $CUSTOM/lockout_list >/dev/null 2>&1) ; then
+    log "Call attempted to LOCKED-OUT experimental node $1"
+    $SCRIPT/wavplay lockout_local
+    $SCRIPT/irlp_reset
+    exit 1
+  fi
+  if (grep ALLREF $CUSTOM/lockout_list >/dev/null 2>&1) ; then
+    log "Call attempted to LOCKED-OUT experimental node $1"
+    $SCRIPT/wavplay lockout_local
+    $SCRIPT/irlp_reset
+    exit 1
+  fi
+  if (grep ALLEXP $CUSTOM/lockout_list >/dev/null 2>&1) ; then
+    log "Call attempted to LOCKED-OUT experimental node $1"
+    $SCRIPT/wavplay lockout_local
+    $SCRIPT/irlp_reset
+    exit 1
+  fi
+fi
+
+if [ -f $LOCAL/active ]; then
+  CONNECTED="`cat $LOCAL/active`"
+  killall ispeaker >/dev/null 2>&1 &
+  echo "Your node is currently connected to $CONNECTED"
+  set_node_digits $CONNECTED NUM1 NUM2 NUM3 NUM4
+  if echo $CONNECTED | grep "ref" >/dev/null ; then
+    IDFILE="reflector $NUM1 $NUM2 $NUM3 $NUM4"
+  else
+    IDFILE="nodenum $NUM1 $NUM2 $NUM3 $NUM4"
+  fi
+  $SCRIPT/wavplay connected $IDFILE
+  exit 0
+fi
+
+# Here is where we parse the exp-x-reference file to determine the IP
+# or hostname, codec, DTMF mute/nomute, and existance.
+
+if ! (cat $SCRIPT/exp-x-reference | grep $1 > /dev/null 2>&1 ) ; then
+  echo "The experimental node you have entered does not exist."
+  $SCRIPT/failure noexist
+  exit 1
+fi
+  
+REMOTE_HOST="`cat $SCRIPT/exp-x-reference | grep $1 | cut -d':' -f2`"
+CODEC="`cat $SCRIPT/exp-x-reference | grep $1 | cut -d':' -f3`"
+MUTE="`cat $SCRIPT/exp-x-reference | grep $1 | cut -d':' -f4`"
+
+echo REMOTE_HOST = $REMOTE_HOST
+echo CODEC = $CODEC
+echo MUTE = $MUTE
+
+# If the remote host is not an IP address, we resolve the host to IP
+
+if (echo $REMOTE_HOST | grep [A-z] >/dev/null 2>&1) || \
+   (echo $REMOTE_HOST | grep [a-Z] >/dev/null 2>&1); then
+  echo "The experimental node is using a hostname $REMOTE_HOST"
+  REMOTE_IP=`host $REMOTE_HOST | grep 'has address' | cut -d" " -f4`
+
+  if [ -z $REMOTE_IP ] ; then
+    echo "The experimental node hostname does not resolve to an IP address."
+    $SCRIPT/failure noexist
+    exit 1
+  fi
+
+if (echo $REMOTE_IP | grep [A-z] >/dev/null 2>&1) || \
+   (echo $REMOTE_IP | grep [a-Z] >/dev/null 2>&1); then
+    echo "The experimental node hostname does not resolve to an IP address."
+    $SCRIPT/failure noexist
+    exit 1
+  fi
+
+else
+  REMOTE_IP="`echo $REMOTE_HOST`"
+fi
+
+echo $REMOTE_IP > $LOCAL/calledip
+
+echo "The experimental node IP is determined to be `cat $LOCAL/calledip`"
+
+if [ -n "$REFLECT_TIMEOUT_VALUE" -a "$REFLECT_TIMEOUT_VALUE" != "0" ] ; then
+  cp -f $CUSTOM/timeoutvalue $CUSTOM/timeoutvalue.temp > /dev/null 2>&1
+  echo "$REFLECT_TIMEOUT_VALUE" > $CUSTOM/timeoutvalue
+else
+  rm -f $LOCAL/timeout
+fi
+
+if [ "$2" = "notimeout" ] ; then
+  rm -f $LOCAL/timeout
+fi
+
+# LOGS the Connect to reflector
+echo "Node Connected to experimental node $1"
+log "Node Connected to experimental node $1"
+# END LOGGING
+
+echo "$1" > $LOCAL/active
+
+if [ -x $CUSTOM/custom_on ] ; then
+    $CUSTOM/custom_on "$1" "$2"
+fi
+
+# Plays ON Identifier
+# If the individual on wave file exists, it is played. If not it takes the base
+# number wave file and adds the channel onto it. If neither exist, it plays a generic
+# "nodenum 9 2 3 4 linkon"
+
+if [ "$PLAY_CUSTOM_IDS" != "NO" ] ; then
+  if [ -f $AUDIO/${1}on.wav ] ; then
+    IDFILE="${1}on"  
+  else
+    set_node_digits $1 NUM1 NUM2 NUM3 NUM4
+    IDFILE="nodenum $NUM1 $NUM2 $NUM3 $NUM4 linkon"
+  fi
+else
+  set_node_digits $1 NUM1 NUM2 NUM3 NUM4
+  IDFILE="nodenum $NUM1 $NUM2 $NUM3 $NUM4 linkon"
+fi
+
+$SCRIPT/wavplay $IDFILE
+
+echo 2074 > $LOCAL/udp_port
+
+#CODEC determination conversion
+
+if [ "$MUTE" = "nomute" ] ; then
+  touch $LOCAL/nomute
+fi
+
+echo CODEC at this point is ="$CODEC"=
+
+echo $CODEC > $LOCAL/codec
+
+$SCRIPT/incrementcount &
+
+exit 0

@@ -1,0 +1,10 @@
+#!/bin/bash
+
+[ -z "$SCRIPT" ] && SCRIPT=/home/irlp/scripts
+source $SCRIPT/common-functions.sh
+
+(echo droplink > $FIFO & sleep 1 ; killall echo; killall dropcall) >/dev/null 2>&1
+
+killall irlp_call >/dev/null 2>&1
+killall irlp_answer >/dev/null 2>&1
+

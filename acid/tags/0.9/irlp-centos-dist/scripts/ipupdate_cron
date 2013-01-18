@@ -1,0 +1,22 @@
+#!/bin/bash
+#=======================================================================
+# filename:     ipupdate_cron                                          
+# description:  This is a wrapper for the ipupdate script for adding  
+#               a delay unique to the node number when caling ipupdate
+#               as a cron job. Because ALL nodes run this job at the    
+#               same time, the delay added by this script staggers the  
+#               time where they hit the IRLP servers.                   
+#=======================================================================
+
+[ -z "$SCRIPT" ] && SCRIPT=/home/irlp/scripts
+source ${SCRIPT}/common-functions.sh
+
+STATIONNUM=${CONVERTED_STATIONID#*stn}
+
+let "NUM=${STATIONNUM} % 600"
+echo "ipupdate_cron..." >> /tmp/crontest
+echo "sleeping for ${NUM} seconds" >> /tmp/crontest
+[ ! -z "$NUM" ] && sleep "$NUM"
+
+${SCRIPT}/ipupdate
+

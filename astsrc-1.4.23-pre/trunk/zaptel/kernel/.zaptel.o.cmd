@@ -1,0 +1,1 @@
+cmd_/usr/local/src/allstar/astsrc-1.4.23-pre/trunk/zaptel/kernel/zaptel.o := ld -EL    -r -o /usr/local/src/allstar/astsrc-1.4.23-pre/trunk/zaptel/kernel/zaptel.o /usr/local/src/allstar/astsrc-1.4.23-pre/trunk/zaptel/kernel/zaptel-base.o 

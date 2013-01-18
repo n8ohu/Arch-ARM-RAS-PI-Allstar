@@ -1,0 +1,39 @@
+#!/bin/bash
+
+. /home/irlp/custom/environment
+source $SCRIPT/common-functions.sh
+
+# First we determine what IP we are going to for the audio files
+
+echo $CONVERTED_STATIONID
+
+echo -n "Obtaining best server IP ... "
+SERVERIP="`$SCRIPT/find_best_server`"
+echo "found IP = $SERVERIP"
+
+echo "Removing the current audio files ..."
+rm -f $AUDIO/${CONVERTED_STATIONID}on.wav
+rm -f $AUDIO/${CONVERTED_STATIONID}off.wav
+
+echo -n "Grabbing latest audio files from server ..."
+  
+if [ "$OPTION10" = "YES" -o "$RSYNC8873" = "YES" ] ; then  
+  $BIN/rsync --timeout=120 --port=8873 -Waz $SERVERIP::irlp/audio/${CONVERTED_STATIONID}*.wav $AUDIO
+else
+  $BIN/rsync --timeout=120 -Waz $SERVERIP::irlp/audio/${CONVERTED_STATIONID}*.wav $AUDIO
+fi
+echo "done."
+
+if [ ! -f $AUDIO/${CONVERTED_STATIONID}on.wav   -o \
+     ! -f $AUDIO/${CONVERTED_STATIONID}off.wav ] ; then
+  echo "Your audio files are not on the server. The files take about"
+  echo "2 hours to update to the servers once they have been sent using"
+  echo "the send_wave_files script. If you continue to have problems,"
+  echo "email your audio files to installs@irlp.net to be updated manually."
+  exit 1
+else
+  echo "Files downloaded successfully!"
+  echo
+  echo "The files will now be played in succession.  Press Enter when ready." ; read
+  $SCRIPT/wavplay ${CONVERTED_STATIONID}on ${CONVERTED_STATIONID}off 
+fi

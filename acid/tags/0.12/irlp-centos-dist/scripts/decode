@@ -1,0 +1,130 @@
+#!/bin/bash 
+#######################################################################
+#         ***************************************************
+#         D O   N O T   N O T   E D I T   T H I S   F I L E !
+#         ***************************************************
+# Please add all custom codes into /home/irlp/custom/custom_decode!!
+#######################################################################
+# 27MAY07   kc6hur   Discovered a problem in DTMFPREFIX processing that
+#                    could make calling nodes where DTMFPREFIX is a
+#                    substring of the node number. The "Decode Node
+#                    Connections" block was simplified by removing the
+#                    special "EchoReflector" test. This was not needed
+#                    as the EchoReflector is nothing more than a
+#                    call_to_reflector, no different than any other
+#                    reflector call. Added debug printouts that can be
+#                    enabled by adding a second argument to the command.
+#                    e.g. "decode <command arg> D"
+#######################################################################
+
+[ -z "$SCRIPT" ] && SCRIPT=/home/irlp/scripts
+source $SCRIPT/common-functions.sh
+
+if [ "$2" = "D" ]; then
+   ECHO=echo
+else
+   ECHO=:
+fi
+
+########################################################################
+#
+# Function to send messages to the LOGFILE
+#
+function logmsg () {
+  log "${0##*/}: $1"
+}
+
+#
+# Function to forward DTMF tones to the remote system
+#
+function fwd_dtmf () {
+   logmsg "$1"
+   if [ ! -f $LOCAL/nomute ] ; then
+     if [ -f $LOCAL/active ] && grep stn $LOCAL/active > /dev/null ; then
+        $SCRIPT/fifoecho "$STATIONID" dtmfregen $2
+     fi
+   fi
+}
+
+# DTMF Commands must be 1 or more digits
+# DEVNOTE: kc6hur - The original code was not supposed to log any 0-1 digit
+#          codes but would allow them to be passed on; however, my log is
+#          full of single digit DTMF log entries. My code here will allow
+#          only DTMF codes with 2 or more digits to be logged and passed
+#          on to the rest of the decode software. Single digit codes are
+#          completely ignored and dropped. Hopefully, no one is crazy enough
+#          to want any single digit commands. If they do, just comment out
+#          this line.
+# NEWNOTE: ve7ltd - This was changed to allow 1 digit codes to be entered 
+#          and logged
+if [ "${#1}" -lt "1" ] ; then exit 1 ; fi
+#
+# Log the DTMF code
+logmsg "DTMF = $@"
+#
+# Call the user's custom decode script
+#
+if ! $CUSTOM/custom_decode $1 ; then exit 0; fi
+#
+# Parse the DTMF code
+#
+# 27MAY07 KC6HUR: The line below used to read "CMD=${1#*$DTMFPREFIX}"
+#         but this had the potential of causing problems if the nodeop
+#         created a prefix code that did not contain one of the 
+#         following: (S,P,A,B,C). If only numerics (0..9) were used,
+#         matches with node number substrings could cause the called
+#         node to be unreachable. e.g. DTMFPREFIX = 42 and the node
+#         that is being called is 3420, the call would fail because
+#         423420 would result in PFX = 42342 and the CMD = 0. You can
+#         also see that if 42 appeared anywhere else in the node number,
+#         there would be problems calling the node.
+#
+CMD=${1#$DTMFPREFIX}        # Everything after DTMFPREFIX is CMD
+PFX=${1%$CMD}               # Everything before CMD is PFX
+$ECHO "DEBUG: [${0##*/}] PFX = $PFX; CMD = $CMD"
+#
+# Validate PREFIX code
+#
+# 27MAY07 KC6HUR: I removed the test where PFX was checked for being
+#         non-empty in an "else" clause to "if [-n "$DTMFPREFIX" ] ; 
+#         then" clause. The reason for this removal is that the check
+#         provided no added value. If DTMFPREFIX is empty, then there
+#         should be no way for PFX to contain a value and if it did,
+#         who cares because it is not used for anything.
+#
+if [ -n "$DTMFPREFIX" ] && [ "${PFX}" != "${DTMFPREFIX}" ]; then
+   $ECHO "DEBUG: [${0##*/}] Invalid/Missing PREFIX in input DTMF: $1"
+   fwd_dtmf "Invalid/Missing PREFIX in DTMF: $1" $1
+   exit 0
+fi
+#
+# Check for existance of "BAD" characters in the COMMAND
+#
+if echo $CMD | grep "[S,P,A,B,C,D]" > /dev/null ; then
+   $ECHO "DEBUG: [${0##*/}] Invalid digit (S,P,A,B,C,D) in input DTMF: $1"
+   fwd_dtmf "The command contains a bad digit (S,P,A,B,C,D)" $1
+   exit 0
+fi
+
+#----------------------------------------------------------------------
+# Process the command code
+#----------------------------------------------------------------------
+# Test for disconnect command
+#
+if [ "$CMD" = "73" ] ; then $SCRIPT/end ; exit 1 ; fi
+#
+# Decode Node Connections
+#
+if [ ${#CMD} -eq 4 ] ; then             # CMD MUST be 4 digits long
+   $ECHO "DEBUG: [${0##*/}] Connecting to node: $CMD"
+   if [ $CMD -lt 9000 ] ; then          # 0000-8999 = Connect to node
+      $SCRIPT/call "stn$CMD"
+   else                                 # 9000-9999 = Connect to ref
+      $SCRIPT/connect_to_reflector "ref$CMD"
+   fi
+else                                    # CMD is too long/short, punt
+   $ECHO "DEBUG: [${0##*/}] Invalid command: $CMD"
+   fwd_dtmf "Invalid command length: $CMD" $1
+   exit 0
+fi
+exit 1

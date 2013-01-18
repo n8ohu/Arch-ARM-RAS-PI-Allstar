@@ -1,0 +1,50 @@
+#!/bin/bash
+
+[ -z "$SCRIPT" ] && SCRIPT=/home/irlp/scripts
+source $SCRIPT/common-functions.sh
+
+if [ ! -f $LOCAL/enable ]; then exit 1 ; fi 
+if [ ! -f $LOCAL/active ]; then exit 1 ; fi 
+
+REMOTE="`cat $LOCAL/active`"
+rm -f $LOCAL/active
+rm -f $LOCAL/codec
+rm -f $LOCAL/udp_port
+rm -f $LOCAL/nomute
+rm -f $LOCAL/monitor_only
+
+if echo $REMOTE | grep "ref999" >/dev/null ; then
+  IDFILE="echooff"
+else
+  if echo $REMOTE | grep "ref" >/dev/null ; then
+    set_node_digits $REMOTE NUM1 NUM2 NUM3 NUM4
+    IDFILE="reflector $NUM1 $NUM2 $NUM3 $NUM4 linkoff"
+  elif [ $REMOTE = "remote" ] ; then
+    IDFILE="remote_call_off"
+  else
+    set_node_digits $REMOTE NUM1 NUM2 NUM3 NUM4
+    IDFILE="nodenum $NUM1 $NUM2 $NUM3 $NUM4 linkoff"
+  fi
+fi
+
+if [ "$1" = "timeout" ] ; then 
+  $SCRIPT/wavplay timeout $IDFILE
+elif [ "$1" = "blocked" ] ; then
+  $SCRIPT/wavplay refblock $IDFILE
+else
+  $SCRIPT/wavplay $IDFILE
+fi
+
+if [ "$CUSTOM_OFF" = "YES" ] ; then
+  if [ -f $CUSTOM/custom_off ] ; then
+    $CUSTOM/custom_off $1
+  fi
+fi
+
+rm -f $LOCAL/connectedip
+rm -f $LOCAL/calledip
+rm -f $RUN/*
+
+touch $LOCAL/timeout
+
+$SCRIPT/statupdate &

@@ -1,0 +1,39 @@
+#!/bin/bash
+
+# Info sent from the control or reply script
+# SYNTAX <on RemoteSTATIONID CODEC RemoteIP (notimeout)>
+
+[ -z "$SCRIPT" ] && SCRIPT=/home/irlp/scripts
+source $SCRIPT/common-functions.sh
+
+# Added to run custom_off in case of reset.
+if [ "$CUSTOM_OFF" = "YES" ] ; then
+  if [ -x $CUSTOM/custom_off ] ; then
+    $CUSTOM/custom_off
+  fi
+fi
+#
+# Ask all IRLP processes to commit suicide
+#
+killall irlp_call &>/dev/null
+killall irlp_answer &>/dev/null
+killall pgp &>/dev/null
+#
+# Kill all IRLP processes with extreme predjudice
+#
+killall -9 irlp_call &>/dev/null
+killall -9 irlp_answer &>/dev/null
+killall -9 pgp &>/dev/null
+#
+# Clear the "ramdrive"
+#
+rm -f ${LOCAL}/active
+rm -f ${LOCAL}/preaccess
+rm -f ${LOCAL}/connectedip
+rm -f ${LOCAL}/calledip
+rm -f ${LOCAL}/nomute
+rm -f ${LOCAL}/monitor_only
+
+#rm -f ${RUN}/*
+
+touch ${LOCAL}/timeout

@@ -1,0 +1,6 @@
+200
+150
+# DO NOT CHANGE the format of this file, ONLY change the numbers, 
+# and DO NOT remove commented lines
+# 1st VALUE = number of milliseconds IMIKE waits to stop sending packets after losing COS
+# 2nd VALUE = number of milliseconds IMIKE waits to start sending packets after receiving COS

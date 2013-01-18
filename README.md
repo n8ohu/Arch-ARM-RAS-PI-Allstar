@@ -16,3 +16,7 @@ It does not use the ACID install method...
 All credit should go to the Allstar creators at https://allstarlink.org/
 
 Regards, Anthony VK2ACP
+
+PS. You may need to do the following to add dependicies to compile... e.g
+
+pacman -S base-devel binutils lrzip autoconf alsa-oss libusb-compat libnewt linux-headers alsa-lib libxml2
